@@ -4,7 +4,7 @@
 
 Each person owns the directory and output files assigned in `docs/DATA_CONTRACTS.md`. Work in your assigned directory to minimize merge conflicts. Source CSVs are read-only. Agree on contract changes before implementing them.
 
-Person 4 coordinates integration and changes to shared root files (`README.md`, `.gitignore`, and `docs/`). Other members propose shared-file changes in a separate pull request. Each owner keeps dependencies, run instructions, and their own tests in their work area; avoid editing a shared dependency file.
+Person 4 coordinates integration and changes to shared root files (`README.md`, `.gitignore`, and `docs/`). Other members propose shared-file changes in a separate pull request. Person 1 owns the existing shared `pipelines/clean_data.py` and `pipelines/requirements.txt`; Person 2 owns crash validation in `pipelines/crashes/`. Coordinate shared cleaner edits through pull requests. Other owners keep dependencies and instructions in their own work areas.
 
 ## Daily workflow
 
@@ -28,9 +28,9 @@ Do not push directly to `main`, force-push shared branches, or edit someone else
 
 ## Parallel development
 
-The two cleaners can work independently using raw CSVs. Analysis can implement matching against the documented schemas while cleaners are built. The map can use clearly labeled synthetic fixtures stored inside `web/` while analysis is built; never present fixtures as findings. Each owner supplies a small representative fixture in their own work area if needed.
+Both cleaned datasets are already available. Person 1 can maintain the existing cleaner while Person 2 validates crash data independently. Analysis and map development can begin immediately against the committed snapshots. The map can use clearly labeled synthetic fixtures stored inside `web/` while analysis is built; never present fixtures as findings. Each owner supplies a small representative fixture in their own work area if needed.
 
-Generated outputs are local build artifacts. Run upstream steps or exchange artifacts outside Git; don't commit competing versions of the same generated file.
+The two cleaned CSV snapshots are tracked exceptions. Regenerate them with the cleaner and commit updates with the relevant code changes. Other generated outputs remain local build artifacts; never commit competing versions of the same output.
 
 ## Done means
 

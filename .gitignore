@@ -19,3 +19,7 @@ node_modules/
 dist/
 build/
 coverage/
+
+# Small, reproducible team-provided cleaned snapshots
+!data/processed/signal_complaints_clean.csv
+!data/processed/collisions_clean.csv

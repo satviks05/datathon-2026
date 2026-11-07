@@ -1,7 +1,7 @@
-# Person 1 — 311 cleaning
+# Person 1 — Signal complaints and shared cleaner
 
-Own this directory. Read the raw 311 CSV and produce `complaints.csv` and `complaints_quality.json` under `data/processed/`, following [the contract](../../docs/DATA_CONTRACTS.md).
+The existing cleaner is `../clean_data.py`; see [pipeline instructions](../README.md). The committed complaint output is `data/processed/signal_complaints_clean.csv`, using the source field names in [the contract](../../docs/DATA_CONTRACTS.md).
 
-Handle coordinates, unique IDs, dates, category fields, and unknown boroughs. Preserve exclusions in the quality report. Document dependencies, execution commands from the repository root, and validation here when implemented.
+Own the shared cleaner, its dependency file, and complaint-specific extensions here. Keep the signal-only filter explicit. Add machine-readable complaint-quality reporting as needed. Coordinate any crash-cleaning changes with Person 2.
 
 Starting branch: `team/311-cleaning`.
