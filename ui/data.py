@@ -299,3 +299,27 @@ def week_label(start):
     start = date.fromisoformat(str(start)[:10])
     end = start + timedelta(days=6)
     return f"{start.strftime('%b')} {start.day}–{end.day}, {start.year}"
+
+
+@st.cache_data(show_spinner=False)
+def _read_source_events(directory, signatures):
+    directory = Path(directory)
+    reports = pd.read_csv(directory / SOURCES[0], dtype={"unique_key": "string"})
+    crashes = pd.read_csv(directory / SOURCES[1], dtype={"collision_id": "string"})
+    reports["event_at"] = pd.to_datetime(reports["created_date"], errors="raise")
+    crashes["event_at"] = pd.to_datetime(
+        crashes["crash_date"].astype(str).str[:10] + " " + crashes["crash_time"].astype(str), errors="raise")
+    for frame in (reports, crashes):
+        for column in ("latitude", "longitude"):
+            frame[column] = pd.to_numeric(frame[column], errors="raise")
+    return reports, crashes
+
+
+def source_events_for_week(forecast_week):
+    """Read existing cleaned observations only; no forecasts or evaluation metrics."""
+    signatures = tuple(signature(DATA / name) for name in SOURCES)
+    reports, crashes = _read_source_events(str(DATA), signatures)
+    end = pd.Timestamp(forecast_week)
+    start = pd.Timestamp(date.fromisoformat(forecast_week) - timedelta(days=7))
+    return tuple(frame.loc[frame["event_at"].ge(start) & frame["event_at"].lt(end)].copy()
+                 for frame in (reports, crashes))

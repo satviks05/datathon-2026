@@ -1,20 +1,22 @@
 """Streamlit presentation for canonical weekly collision forecast exports."""
 
 import json
+from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
 
 from ui.data import (
     MODELS, MEASURES, PREDICTION_COLUMNS, WEEKS, ForecastDataError,
-    color_scale_max, load_forecast_bundle, week_label, week_rows,
+    color_scale_max, load_forecast_bundle, source_events_for_week, week_label, week_rows,
 )
-from ui.map_view import make_map
+from ui.map_view import make_map, make_source_map
 
 st.set_page_config(page_title="NYC | Collision Forecasts", page_icon="🚦", layout="wide")
 st.markdown("""<style>
-.block-container {padding-top: 2rem; max-width: 1550px;}
-h1 {letter-spacing: -.045em; font-weight: 700;}
+.block-container {padding-top: 5rem; max-width: 1550px;}
+[data-testid="stMainBlockContainer"] {padding-top: 5rem;}
+h1 {letter-spacing: -.045em; font-weight: 700; line-height: 1.2;}
 h2, h3 {letter-spacing: -.025em;}
 [data-testid="stMetric"] {background: white; border: 1px solid #e2e8ed;
     border-radius: 12px; padding: 16px;}
@@ -30,9 +32,9 @@ st.caption("Historical prototype · August training / September evaluation, 2025
 
 with st.sidebar:
     st.markdown("### Explore a forecast")
-    forecast_week = st.selectbox("Forecast week", WEEKS, format_func=week_label, key="forecast_week")
-    model = st.selectbox("Prediction model", list(MODELS), format_func=MODELS.get, key="prediction_model")
-    measure = st.selectbox("Map measure", list(MEASURES), format_func=MEASURES.get, key="map_measure")
+    forecast_week = st.selectbox("Forecast week", WEEKS, format_func=week_label, key="forecast_week", filter_mode=None)
+    model = st.selectbox("Prediction model", list(MODELS), format_func=MODELS.get, key="prediction_model", filter_mode=None)
+    measure = st.selectbox("Map measure", list(MEASURES), format_func=MEASURES.get, key="map_measure", filter_mode=None)
     top_only = st.checkbox("Show model’s top 50 areas only", key="top_only",
                            help="Sort by predicted count descending, then area ID. Does not change the backend’s evaluation.")
     st.caption("Fixed 500 m cells · No radius search or inspection-spacing rule")
@@ -41,21 +43,38 @@ with st.sidebar:
                           help="Synthetic values for UI development only. Never use as findings.")
 
 bundle = None
+load_problem = None
 try:
     bundle = load_forecast_bundle(fixture=fixture)
 except FileNotFoundError as exc:
-    st.info(str(exc))
-    st.write("The new forecasting backend has not supplied a complete export set yet. "
-             "Older radius-ranking and monthly-regression files are intentionally not used.")
-    st.caption("The backend owner supplies this build command with the new implementation:")
-    st.code("python -m src.build_forecast")
-    st.caption("Enable the development example in the sidebar to check the UI layout. "
-               "It is not an analytical result.")
+    load_problem = str(exc)
 except (ForecastDataError, OSError, ValueError, KeyError, TypeError) as exc:
-    st.error(f"Forecast outputs rejected: {exc}")
-    st.caption("Ask the backend owner to rebuild the canonical outputs together. "
-               "No old exports or substitute values will be displayed.")
+    load_problem = f"Forecast outputs rejected: {exc}"
 if bundle is None:
+    st.info("Explore the actual NYC records below. Model forecasts and comparisons will appear "
+            "when the forecast results are ready.")
+    st.subheader("NYC · observed signal reports and collisions")
+    feature_start = (date.fromisoformat(forecast_week) - timedelta(days=7)).isoformat()
+    st.caption(f"Observed records: {week_label(feature_start)} · preceding the selected forecast week. "
+               "This map shows individual recorded events, not predictions.")
+    layers = st.columns(2)
+    show_reports = layers[0].checkbox("Show signal reports", True, key="source_reports")
+    show_collisions = layers[1].checkbox("Show collisions", True, key="source_collisions")
+    try:
+        reports, crashes = source_events_for_week(forecast_week)
+        st.pydeck_chart(make_source_map(reports if show_reports else reports.iloc[:0],
+                                       crashes if show_collisions else crashes.iloc[:0]),
+                        width="stretch", height=520, key=f"source_map_{forecast_week}")
+        st.caption(f"Blue: {len(reports):,} signal reports · Orange: {len(crashes):,} collisions. "
+                   "No synthetic results or model estimates are included.")
+    except (OSError, ValueError, KeyError) as exc:
+        st.warning("The observed-data map could not load the cleaned files.")
+        st.caption(str(exc))
+    with st.expander("Forecast connection details"):
+        st.caption(load_problem)
+        st.caption("The backend owner supplies the canonical forecast build. After it is available:")
+        st.code("python -m src.build_forecast")
+        st.caption("The optional development example previews the forecast interface with labeled synthetic data.")
     st.stop()
 
 if fixture:
@@ -104,7 +123,7 @@ with explore:
         ids = rows["area_id"].astype(str).tolist()
         if st.session_state.get("selected_area") not in ids:
             st.session_state["selected_area"] = ids[0]
-        selected_id = st.selectbox("Select an area", ids, key="selected_area")
+        selected_id = st.selectbox("Select an area", ids, key="selected_area", filter_mode=None)
         visible_columns = ["area_id", "past_complaints", "past_collisions",
                            PREDICTION_COLUMNS[model], "actual_collisions"]
         st.dataframe(rows[visible_columns], hide_index=True, width="stretch", column_config={
@@ -128,7 +147,8 @@ with explore:
         else:
             st.caption(f"Expected collisions: {forecast_label}. Fractional values represent expected counts.")
         scale = color_scale_max(bundle, measure)
-        st.pydeck_chart(make_map(rows, model, measure, scale, selected_id), width="stretch", height=480)
+        st.pydeck_chart(make_map(rows, model, measure, scale, selected_id), width="stretch", height=480,
+                        key=f"forecast_map_{forecast_week}_{model}_{measure}_{top_only}")
         st.markdown('<div class="legend"></div>', unsafe_allow_html=True)
         st.caption(f"Count scale: 0 → {scale:.2f}. Gray = zero. Larger/brighter markers = higher count. "
                    "Scale fixed across models and weeks for this measure.")

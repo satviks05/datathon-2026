@@ -28,7 +28,7 @@ These depend on the new backend PR; the older `src.build`/`src.train` modules an
 
 ## State and demo readiness
 
-The UI can be developed and checked before real model exports exist. In that case, startup shows which canonical files are missing, rather than displaying the older backend's results. Enable **Development: use example forecast** to inspect a tiny static fixture. All fixture values and locations are synthetic; warnings remain visible and downloads are disabled. Fixture JSON is explicitly marked and cannot be loaded as a production run.
+The UI can be developed and checked before real model exports exist. In that case, startup shows an NYC-centered map of the real cleaned signal reports and collisions from the preceding week. Layer checkboxes and forecast-week selection update these observed records. This is an explicitly labeled observation view; it does not invent predictions or metrics. Missing-file diagnostics and backend setup commands are tucked into **Forecast connection details**. Enable **Development: use example forecast** to inspect a tiny static fixture. All fixture values and locations are synthetic; warnings remain visible and downloads are disabled. Fixture JSON is explicitly marked and cannot be loaded as a production run.
 
 No real-model results are claimed by this UI PR. A real-data end-to-end demo requires the revised backend exports and an integration check. No PR merges are performed automatically; reviewed backend and UI changes need team approval.
 
@@ -41,9 +41,11 @@ No real-model results are claimed by this UI PR. A real-data end-to-end demo req
 - **Area selection:** dropdown; if filtering hides the selected area, reset to the top displayed cell. Map-click selection is not implemented.
 - **Comparison period:** selected week or pooled four-week evaluation. Activity-band MAE is always labeled as pooled.
 
+All dropdowns are selection-only with typing disabled using Streamlit's native `filter_mode=None`. This requires **Streamlit 1.67 or newer**, as specified in `ui/requirements.txt`; reinstall UI requirements when updating this branch. Header spacing clears Streamlit's fixed toolbar.
+
 The selected-area panel shows both historical counts, all three model predictions, and the later observed outcome. Zero-event cells remain visible. All models predict ALL collisions, rather than injury-only outcomes.
 
-Map color and marker size encode counts. Radius is in screen pixels, never a geographic neighborhood. The predicted-count scale is fixed across all three models and all four weeks; other count measures each use a fixed scale across weeks. Gray marks zero. Legends specify units and periods. CARTO tiles require internet access; map hover shows cell ID and displayed count.
+Map color and marker size encode counts. Radius is in screen pixels, never a geographic neighborhood. Pydeck receives a literal `pixels` unit (not an accessor expression), forecast circles are capped at 17 px, and the selected outline at 20 px. The camera starts over NYC at zoom 10.3 with zoom limits 9–16. The predicted-count scale is fixed across all three models and all four weeks; other count measures each use a fixed scale across weeks. Gray marks zero. Legends specify units and periods. CARTO tiles require internet access; map hover shows cell ID and displayed count.
 
 ## Canonical backend contract
 
@@ -90,6 +92,7 @@ The suite covers:
 - Area selection, top-50 tie-breaking, selection reset, displayed/downloaded week agreement.
 - Fixed model-comparison map scales and retained zero-event rows.
 - Explicit fixture labeling and disabled fixture downloads.
+- Read-only dropdown settings, literal map-pixel serialization, NYC camera bounds, and an actual-source map when model files are absent.
 - Missing/malformed/mixed-run/stale states, unsupported schema versions, and input-hash checks.
 - Cache invalidation when run IDs/files change.
 - An additional real-output startup/hash check that runs once all canonical production exports exist; otherwise explicitly skipped.

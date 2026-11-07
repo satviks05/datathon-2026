@@ -17,7 +17,7 @@ from streamlit.testing.v1 import AppTest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from ui import data
-from ui.map_view import map_frame
+from ui.map_view import map_frame, make_map
 
 
 class ExportTestCase(unittest.TestCase):
@@ -151,6 +151,17 @@ class ExportValidationTests(ExportTestCase):
         self.assertTrue(combined.marker_pixels.gt(baseline.marker_pixels).all())
         self.assertEqual(len(combined), 60)
 
+    def test_map_serializes_literal_pixel_units_and_nyc_camera(self):
+        bundle = data.load_forecast_bundle()
+        rows = data.week_rows(bundle, data.WEEKS[0], "combined")
+        deck = make_map(rows, "combined", "predicted", data.color_scale_max(bundle, "predicted"), rows.area_id.iloc[0])
+        config = json.loads(deck.to_json())
+        self.assertEqual(config["layers"][0]["radiusUnits"], "pixels")
+        self.assertEqual(config["layers"][0]["radiusMaxPixels"], 17)
+        self.assertEqual(config["initialViewState"]["minZoom"], 9)
+        self.assertAlmostEqual(config["initialViewState"]["latitude"], 40.715)
+        self.assertAlmostEqual(config["initialViewState"]["longitude"], -73.96)
+
 
 class DashboardTests(ExportTestCase):
     def app(self):
@@ -193,7 +204,7 @@ class DashboardTests(ExportTestCase):
         (self.directory / "predictions.csv").unlink()
         app = self.app()
         self.assertFalse(app.exception)
-        self.assertTrue(any("Awaiting canonical" in element.value for element in app.info))
+        self.assertTrue(any("Explore the actual NYC records" in element.value for element in app.info))
         self.assertEqual(len(app.metric), 0)
         app.checkbox(key="fixture_mode").check().run()
         self.assertFalse(app.exception)
@@ -213,8 +224,30 @@ class DashboardTests(ExportTestCase):
         self.update_meta(run_id="different-run")
         app = self.app()
         self.assertFalse(app.exception)
-        self.assertTrue(any("Mixed run" in element.value for element in app.error))
+        self.assertTrue(any("Mixed run" in element.value for element in app.caption))
         self.assertEqual(len(app.metric), 0)
+
+    def test_observed_nyc_map_remains_visible_without_model_exports(self):
+        (self.directory / "predictions.csv").unlink()
+        for filename in data.SOURCES:
+            shutil.copyfile(ROOT / "data" / "processed" / filename, self.directory / filename)
+        with patch.object(st, "pydeck_chart", wraps=st.pydeck_chart) as chart:
+            app = self.app()
+        self.assertFalse(app.exception)
+        config = json.loads(chart.call_args.args[0].to_json())
+        self.assertEqual(len(config["layers"]), 2)
+        self.assertGreater(len(config["layers"][0]["data"]), 0)
+        self.assertAlmostEqual(config["initialViewState"]["longitude"], -73.96)
+        app.selectbox(key="forecast_week").select("2025-09-15").run()
+        app.checkbox(key="source_reports").uncheck().run()
+        self.assertFalse(app.exception)
+
+    def test_forecast_controls_disable_typing(self):
+        app = self.app()
+        for key in ("forecast_week", "prediction_model", "map_measure", "selected_area"):
+            proto = app.selectbox(key=key).proto
+            enum = proto.DESCRIPTOR.fields_by_name["filter_mode"].enum_type
+            self.assertEqual(enum.values_by_number[proto.filter_mode].name, "FILTER_MODE_NONE")
 
     def test_top50_filter_resets_a_hidden_selection(self):
         bundle = data.load_forecast_bundle()
