@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "experiment": "week_over_week_complaint_change",
+  "run_id": "change-046322ac8ae99cd2b5205202eae1119015e85f1ec6d6501b9f9221e852ab37ce",
+  "created_at_utc": "2026-11-07T22:22:05.249050+00:00",
+  "input_sha256": {
+    "signal_complaints_clean.csv": "23d53ab12df3a8c69fc9dc695eca2ede7a2eb38f0de4f9c34fb20d27fb30c02c",
+    "collisions_clean.csv": "a9d6d0d89461e038a73732fa24fb3c55c50ebfce0b49a913b7bdcb0697960ea2"
+  },
+  "implementation_sha256": {
+    "forecast_config.py": "e812349c0a1b24c52cb92b620114449a869996756fb28eefe6d5e976c30fb59f",
+    "forecast_features.py": "da42e47c99544f9dd57739c7fb4b7574bc8e519622794a8df2b077a3a77bfa87",
+    "forecast_metrics.py": "9048d39ff50db261c73a63d0d1e3c8302efd2adec2c6f84c1a85c1cd1467bcf3",
+    "experiment_build.py": "760dc8f552bb0562e78406b8e2927f8e92654915dcbbd903d92539db0281271d"
+  },
+  "output_sha256": {
+    "features.csv": "9b1d866ac85d4c9fdd826a960d2ba36ff974697e9436c77614424f0e493c552e",
+    "predictions.csv": "2c364bb763db6610c5d554533440a5ecff1091064b999e1d57639c62eca5c6c9",
+    "metrics.csv": "225d0c10cc4e78cd432c4853e6bfe526003702606f451dbf006b3588c0f4c3bf"
+  },
+  "feature_definition": "complaint_change = last 7 days' reports - previous 7 days' reports",
+  "train_starts": [
+    "2025-08-15",
+    "2025-08-22"
+  ],
+  "evaluation_starts": [
+    "2025-09-01",
+    "2025-09-08",
+    "2025-09-15",
+    "2025-09-22"
+  ],
+  "model_settings": {
+    "collision_only_2w": {
+      "features": [
+        "past_collisions"
+      ],
+      "alpha": 1.0,
+      "max_iter": 1000,
+      "training_rows": 2360,
+      "training_starts": [
+        "2025-08-15",
+        "2025-08-22"
+      ],
+      "scaler_mean": [
+        0.470046707466586
+      ],
+      "coefficients": [
+        0.1416905533376363
+      ],
+      "converged": true,
+      "transform": "signed log1p -> StandardScaler (counts remain ordinary log1p)"
+    },
+    "complaint_level_2w": {
+      "features": [
+        "past_collisions",
+        "past_complaints"
+      ],
+      "alpha": 1.0,
+      "max_iter": 1000,
+      "training_rows": 2360,
+      "training_starts": [
+        "2025-08-15",
+        "2025-08-22"
+      ],
+      "scaler_mean": [
+        0.470046707466586,
+        0.2544871638723138
+      ],
+      "coefficients": [
+        0.13887215240390688,
+        0.05151690311011383
+      ],
+      "converged": true,
+      "transform": "signed log1p -> StandardScaler (counts remain ordinary log1p)"
+    },
+    "complaint_change_2w": {
+      "features": [
+        "past_collisions",
+        "past_complaints",
+        "complaint_change"
+      ],
+      "alpha": 1.0,
+      "max_iter": 1000,
+      "training_rows": 2360,
+      "training_starts": [
+        "2025-08-15",
+        "2025-08-22"
+      ],
+      "scaler_mean": [
+        0.470046707466586,
+        0.2544871638723138,
+        -0.05480073624130448
+      ],
+      "coefficients": [
+        0.13869515125316242,
+        0.054344859294990396,
+        -0.009780886717889278
+      ],
+      "converged": true,
+      "transform": "signed log1p -> StandardScaler (counts remain ordinary log1p)"
+    }
+  },
+  "comparisons": [
+    {
+      "reference": "collision_only_2w",
+      "mae_reduction": 0.0037089368302934966,
+      "relative_mae_improvement_pct": 0.4392605760193711,
+      "top50_coverage_difference_pp": -0.23512123438648036
+    },
+    {
+      "reference": "complaint_level_2w",
+      "mae_reduction": 0.00023424485229206482,
+      "relative_mae_improvement_pct": 0.02785696088438981,
+      "top50_coverage_difference_pp": 0.0
+    },
+    {
+      "reference": "persistence",
+      "mae_reduction": 0.09642606613691851,
+      "relative_mae_improvement_pct": 10.290097946331796,
+      "top50_coverage_difference_pp": -0.23512123438648036
+    }
+  ],
+  "rows": {
+    "features": 7080,
+    "predictions": 4720,
+    "metrics": 32
+  },
+  "limitations": [
+    "Exploratory add-on after September outcomes were already examined.",
+    "Only two training windows; this is week-over-week change, not a stable long-term normal.",
+    "Baselines are refitted on identical two-window training rows; compare within this experiment.",
+    "Do not attribute changes relative to the original three-window model solely to new features.",
+    "Negative changes are retained; no data tuning, causal claims, or significance claims."
+  ]
+}
