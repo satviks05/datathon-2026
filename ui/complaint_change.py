@@ -4,6 +4,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
+import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -17,6 +18,24 @@ LABELS = {
     "complaint_level_2w": "Complaint level · matched",
     "complaint_change_2w": "Complaint level + weekly change",
 }
+
+
+def comparison_chart(scope):
+    """Reserve space for full labels instead of Streamlit's default axis limit."""
+    order = [LABELS[name] for name in (
+        "collision_only_2w", "complaint_level_2w", "complaint_change_2w", "persistence")]
+    base = alt.Chart(scope).encode(
+        x=alt.X("mae:Q", title="MAE · lower is better",
+                scale=alt.Scale(domain=[0, float(scope.mae.max()) * 1.15])),
+        y=alt.Y("Model:N", sort=order, title=None,
+                axis=alt.Axis(labelLimit=0, labelPadding=12, labelFontSize=13,
+                              ticks=False, domain=False)),
+        tooltip=[alt.Tooltip("Model:N", title="Model"), alt.Tooltip("mae:Q", title="MAE", format=".6f")],
+    )
+    bars = base.mark_bar(color="#176B5B", size=25, cornerRadiusEnd=3)
+    values = base.mark_text(align="left", dx=8, color="#172B3A", fontSize=12).encode(
+        text=alt.Text("mae:Q", format=".4f"))
+    return (bars + values).properties(height=260).configure_view(stroke=None)
 
 
 def _matches(path, expected):
@@ -82,10 +101,10 @@ def render_change_experiment(forecast_week, fixture=False):
     scope = metrics.loc[metrics.scope.eq("overall")].copy() if period == "All four weeks" else metrics.loc[
         metrics.scope.eq("week") & metrics.forecast_start.eq(forecast_week)].copy()
     scope["Model"] = scope.model.map(LABELS)
-    st.bar_chart(scope.set_index("Model")[["mae"]].rename(columns={"mae": "MAE · lower is better"}),
-                 horizontal=True, color="#176B5B")
+    st.altair_chart(comparison_chart(scope), width="stretch")
     st.dataframe(scope[["Model", "mae", "top_k_coverage_pct", "top_k_collisions", "citywide_collisions"]],
                  hide_index=True, width="stretch", column_config={
+                     "Model": st.column_config.TextColumn("Model", width="large"),
                      "mae": st.column_config.NumberColumn("MAE", format="%.4f"),
                      "top_k_coverage_pct": st.column_config.NumberColumn("Top-50 coverage (%)", format="%.2f"),
                  })
