@@ -1,0 +1,6 @@
+-r pipelines/requirements.txt
+# Compatible with the existing cleaner's pandas==2.2.3 and Python 3.10-3.13.
+numpy==2.2.6
+# Matches the UI owner's published requirements on feature/streamlit-ui.
+streamlit>=1.55,<2
+pydeck>=0.9,<1

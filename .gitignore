@@ -23,3 +23,20 @@ coverage/
 # Small, reproducible team-provided cleaned snapshots
 !data/processed/signal_complaints_clean.csv
 !data/processed/collisions_clean.csv
+
+# Reproducible backend handoff snapshots; regenerate with python -m src.build.
+!data/processed/targets_scored.csv
+!data/processed/selected_targets.csv
+!data/processed/evaluation.csv
+!data/processed/analysis_manifest.json
+!data/processed/model_metrics.csv
+# August-only training inputs and separately held-out actuals.
+!data/processed/august_train/
+!data/processed/august_train/*.csv
+!data/processed/september_actuals/
+!data/processed/september_actuals/*.csv
+!data/processed/split_manifest.json
+!data/processed/september_forecasts.csv
+!data/processed/forecast_manifest.json
+# Per-area actual/prediction audits and optional daily forecasts remain generated locally.
+tmp/

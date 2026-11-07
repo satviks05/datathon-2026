@@ -1,0 +1,15 @@
+{
+  "source_input_version": "df7654f42d353c82f977dcd43e8e9f9e87884eb08d8e66b0fa017edb9f34ab5d",
+  "periods": {
+    "august_train": {
+      "signal_reports": 3276,
+      "collisions": 6777,
+      "role": "training and forecast inputs"
+    },
+    "september_actuals": {
+      "signal_reports": 2843,
+      "collisions": 7289,
+      "role": "comparison only; never model inputs"
+    }
+  }
+}
