@@ -30,7 +30,7 @@ These depend on the new backend PR; the older `src.build`/`src.train` modules an
 
 The UI can be developed and checked before real model exports exist. In that case, startup shows an NYC-centered map of the real cleaned signal reports and collisions from the preceding week. The default **Area counts** view groups observations into approximately 500 m display bins, with larger circles indicating more events. **Individual events** shows equal-sized points for detailed inspection. Layer checkboxes and forecast-week selection update these observations. This is an explicitly labeled observation view; it does not invent predictions or metrics. Missing-file diagnostics and backend setup commands are tucked into **Forecast connection details**. Enable **Development: use example forecast** to inspect a tiny static fixture. All fixture values and locations are synthetic; warnings remain visible and downloads are disabled. Fixture JSON is explicitly marked and cannot be loaded as a production run.
 
-No real-model results are claimed by this UI PR. A real-data end-to-end demo requires the revised backend exports and an integration check. No PR merges are performed automatically; reviewed backend and UI changes need team approval.
+The revised backend exports are now committed on `main` and integrated into this UI branch: 4,720 prediction rows, 1,180 eligible cells, four evaluation weeks, and 24 metric rows. The real-export schema/source-hash check and Streamlit startup test pass. All 20 UI tests pass with no skips. A visual browser demo is still required; Python/AppTest checks do not verify tile rendering. No UI PR merges are performed automatically; reviewed changes need team approval.
 
 ## Controls and behavior
 
