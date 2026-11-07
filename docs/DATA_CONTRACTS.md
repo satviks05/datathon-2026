@@ -1,51 +1,46 @@
-# Shared data contracts — version 1
+# Shared data contracts — version 2
 
-Agree on changes before coding. Paths are relative to repository root. Both source datasets contain local NYC timestamps with no explicit timezone offset. Interpret them as America/New_York; preserve local ISO timestamps in outputs. Date-only fields use `YYYY-MM-DD`.
+The existing team cleaner supersedes the starter's proposed cleaning schemas. Preserve the actual field names below; do not rename columns independently in the map and analysis. Both cleaned CSVs are committed snapshots and can be regenerated with `pipelines/clean_data.py`.
 
-## Person 1: 311 cleaning
+Paths are relative to repository root. Treat timestamps as America/New_York local time. Dates use `YYYY-MM-DD`. Coordinates are WGS84 decimal degrees.
 
-Input: `data/raw/nyc311_dot_aug_sep_2025.csv`
+## Existing cleaning outputs
 
-Output: `data/processed/complaints.csv`, one usable geographic record per distinct `complaint_id`.
+### `data/processed/signal_complaints_clean.csv`
 
-Columns: `complaint_id` (string from `unique_key`), `created_at` (ISO datetime from `created_date`), `date` (creation date), `borough` (uppercase or empty for unknown), `latitude` (number), `longitude` (number), `complaint_type` (string), `descriptor` (string), `status` (string).
+One Traffic Signal Condition report per `unique_key`; 6,119 records in the initial snapshot.
 
-Quality output: `data/processed/complaints_quality.json`.
+Columns: `unique_key` (string ID), `created_date` (local ISO datetime), `closed_date` (nullable local ISO datetime), `agency`, `complaint_type`, `descriptor`, `status`, `borough` (nullable), `latitude`, `longitude`.
 
-## Person 2: crash cleaning
+The source includes 34,676 DOT complaints; 6,534 are signal reports. The cleaner drops 415 signal reports with unusable locations. Non-signal reports are outside project scope, not coordinate exclusions.
 
-Input: `data/raw/nyc_crashes_aug_sep_2025.csv`
+### `data/processed/collisions_clean.csv`
 
-Output: `data/processed/crashes.csv`, one usable geographic record per distinct `crash_id`.
+One collision per `collision_id`; 14,066 records in the initial snapshot.
 
-Columns: `crash_id` (string from `collision_id`), `occurred_at` (ISO datetime combining `crash_date` and `crash_time`), `date` (crash date), `borough` (uppercase or empty for unknown), `latitude` (number), `longitude` (number), `persons_injured` (integer), `persons_killed` (integer), `cyclists_injured` (integer).
+Columns: `collision_id` (string ID), `crash_date` (date), `crash_time` (`HH:MM` local time), `borough` (nullable), `latitude`, `longitude`, `number_of_persons_injured`, `number_of_persons_killed`, `number_of_cyclist_injured` (nonnegative integer counts), `has_injury`, `has_fatality` (CSV `True`/`False` booleans).
 
-Quality output: `data/processed/crashes_quality.json`.
+Combine `crash_date` and `crash_time` for temporal comparisons. Parse boolean strings explicitly; the string `False` must not be treated as truthy.
 
-## Common cleaning rules
+## Ownership and quality reporting
 
-- Validate IDs and duplicates; investigate conflicting duplicates rather than silently keeping one.
-- Reject missing/unparseable, nonfinite, zero, or out-of-range coordinate pairs from geographic outputs. Use the initial screening box documented in the root README, or coordinate a documented refinement.
-- Do not require a known borough when coordinates are usable; blank crash boroughs occur in the source.
-- Validate dates and injury values; document invalid values separately. Do not silently convert missing injuries to zero.
-- Quality JSON fields: `input_rows`, `output_rows`, `exclusions_by_reason` (mutually exclusive primary reasons), `warnings`, and `coordinate_rule`. Explain duplicate handling and date validation in `warnings` or additional fields.
-- Retain raw data unchanged; no imputed borough centroids or made-up locations.
+Person 1 owns the shared cleaner and complaint-specific extensions. Person 2 owns separate crash validation and data-quality tooling in `pipelines/crashes/`. Do not split or edit the shared cleaner concurrently without coordinating.
 
-## Person 3: analysis
+Planned quality reports, not yet implemented: `data/processed/complaints_quality.json` and `crashes_quality.json`. Record input rows, category filtering, duplicates, coordinate exclusions, output rows, and the exact coordinate rule separately. Preserve raw inputs unchanged. Do not impute borough centroids for missing locations.
 
-Inputs: the two cleaned CSVs and their quality reports.
+## Person 3: planned analysis outputs
 
-Outputs:
+Inputs: the two cleaned CSVs above. Preserve source identifiers and field names in GeoJSON properties.
 
-- `data/processed/matches.csv`: `complaint_id`, `crash_id`, `distance_m`, `complaint_precedes_crash`. One pair per IDs, including all pairs within the largest evaluated radius (initially 100 m). Use the distance to derive the 25/50/100 m subsets; do not duplicate pairs for different radii. A preceding complaint means `created_at < occurred_at`.
-- `data/processed/complaints.geojson` and `crashes.geojson`: FeatureCollections mirroring cleaned CSV properties; geometry is a Point using **[longitude, latitude]** in WGS84. These names are owned by Person 3, not the cleaners.
-- `data/processed/summary.json`: documented, versioned statistics including `schema_version: 1`, `complaints_total`, `crashes_total`, `complaints_mappable`, `crashes_mappable`, `complaints_excluded`, `crashes_excluded`, and `radii_m: [25, 50, 100]`. Totals refer to raw input rows; explain any deduplication in additional fields.
+- `data/processed/matches.csv`: `complaint_id` (from `unique_key`), `crash_id` (from `collision_id`), `distance_m`, `complaint_precedes_crash`. One pair per IDs, including all pairs within the largest evaluated radius (initially 100 m). Use distances to derive 25/50/100 m subsets without duplicating pairs per radius. Preceding means complaint creation strictly before combined crash datetime.
+- `data/processed/complaints.geojson` and `crashes.geojson`: FeatureCollections mirroring their cleaned CSV properties; geometry is a Point in **[longitude, latitude]** order. Use JSON booleans for crash flags and null for missing borough/closure values. Person 3 owns these files.
+- `data/processed/summary.json`: planned `schema_version: 2`, `dot_complaints_source_total`, `signal_complaints_total`, `signal_complaints_mappable`, `signal_complaints_coordinate_excluded`, `crashes_total`, `crashes_mappable`, `crashes_coordinate_excluded`, and `radii_m: [25, 50, 100]`. Explain duplicate handling separately when applicable.
 - `analysis/findings.md`: evidence, radius sensitivity, limitations, and priority locations with a documented prioritization method.
 
-Compute metric distances using a suitable projection or geodesic calculation, not Euclidean distance in latitude/longitude degrees. Counts of matches and counts of distinct crashes answer different questions. Two months of records limit before/after comparisons, particularly near the start and end of the window.
+Use geodesic distances or a suitable metric projection, not Euclidean distance in latitude/longitude degrees. Distinguish matched pairs from distinct crashes. Dates near the two-month window's edges have less observed history/follow-up. Geographic overlap alone does not establish a causal connection to signals.
 
-## Person 4: map and integration
+## Person 4: planned map and integration
 
-Consumes the GeoJSON, `matches.csv`, and `summary.json`. Keep application code, build configuration, and presentation materials in `web/`. Own any conversion/copy into app-specific assets; never edit analysis output files in place. Document the app's setup and launch commands in `web/README.md`.
+Consume the GeoJSON, matches, and summary. Keep app code, build configuration, and presentation in `web/`. Own any conversion/copy into app-specific assets; do not edit analysis outputs in place. Document dependencies, setup, and launch commands in `web/README.md`.
 
-Framework choice is left to the team. Coordinate any additional summary fields with Person 3. Map popups and labels must distinguish raw events, matched pairs, distinct crashes, and exclusions.
+The map can also consume the cleaned CSV snapshots directly during development, using the same field names. Label the complaint layer **Traffic Signal Complaints**. Show category filtering and coordinate exclusions separately. Coordinate additional summary fields with Person 3.

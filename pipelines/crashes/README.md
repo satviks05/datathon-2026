@@ -1,7 +1,7 @@
-# Person 2 — Crash cleaning
+# Person 2 — Crash validation and data quality
 
-Own this directory. Read the raw crash CSV and produce `crashes.csv` and `crashes_quality.json` under `data/processed/`, following [the contract](../../docs/DATA_CONTRACTS.md).
+Crash cleaning already exists in `../clean_data.py`. The committed output is `data/processed/collisions_clean.csv`; see [the contract](../../docs/DATA_CONTRACTS.md).
 
-Handle missing and zero coordinates, IDs, combined crash date/time, injury counts, and unknown boroughs. Document dependencies, execution commands from the repository root, and validation here when implemented.
+Own independent crash validation and quality-report tooling in this directory. Verify missing/zero coordinates, unique IDs, combined date/time, injury counts, and retained records with unknown boroughs. Do not concurrently edit the shared cleaner owned by Person 1; propose coordinated changes through a pull request.
 
-Starting branch: `team/crash-cleaning`.
+Document any added dependencies, commands, and validation here. Starting branch: `team/crash-cleaning`.
