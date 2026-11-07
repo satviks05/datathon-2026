@@ -1,15 +1,12 @@
-"""Streamlit presentation for canonical weekly collision forecast exports."""
+"""Observed NYC map with separate model comparison and prediction tables."""
 
 import json
 
 import pandas as pd
 import streamlit as st
 
-from ui.data import (
-    MODELS, MEASURES, PREDICTION_COLUMNS, WEEKS, ForecastDataError,
-    color_scale_max, load_forecast_bundle, week_label, week_rows,
-)
-from ui.map_view import make_map
+from ui.data import (MODELS, PREDICTION_COLUMNS, WEEKS, ForecastDataError,
+                     load_forecast_bundle, week_label, week_rows)
 from ui.observations import render_observations
 
 st.set_page_config(page_title="NYC | Collision Forecasts", page_icon="🚦", layout="wide")
@@ -27,145 +24,80 @@ h2, h3 {letter-spacing: -.025em;}
 .legend {max-width: 340px; height: 9px; border-radius: 5px;
     background: linear-gradient(to right, #398ba0, #e2522d); margin: 6px 0;}
 </style>""", unsafe_allow_html=True)
-st.markdown('<div class="eyebrow">NYC IN MOTION / WEEKLY COLLISION FORECASTS</div>', unsafe_allow_html=True)
-st.title("Do complaints add predictive signal?")
-st.write("Compare collision history alone with collision history plus traffic-signal complaints. "
-         "Explore expected collision counts and what happened in the following week.")
+st.markdown('<div class="eyebrow">NYC IN MOTION / COMPLAINTS & COLLISIONS</div>', unsafe_allow_html=True)
+st.title("NYC complaints & collisions")
+st.write("Explore where signal complaints and collisions concentrate, then compare whether "
+         "complaints improve forecasts beyond collision history alone.")
 st.caption("Historical prototype · August training / September evaluation, 2025 · NYC local time")
 
+
 with st.sidebar:
-    st.markdown("### Explore a forecast")
-    forecast_week = st.selectbox("Forecast week", WEEKS, format_func=week_label, key="forecast_week", filter_mode=None)
-    model = st.selectbox("Prediction model", list(MODELS), format_func=MODELS.get, key="prediction_model", filter_mode=None)
-    measure = st.selectbox("Map measure", list(MEASURES), format_func=MEASURES.get, key="map_measure", filter_mode=None)
+    st.markdown("### Explore NYC")
+    forecast_week = st.selectbox("Evaluation week", WEEKS, format_func=week_label,
+                                 key="forecast_week", filter_mode=None)
+    st.caption("The map shows the preceding week’s real observations. Tables evaluate the selected week.")
+    model = st.selectbox("Model for tables", list(MODELS), format_func=MODELS.get,
+                         key="prediction_model", filter_mode=None)
     st.caption({"combined": "Poisson model using past collisions and signal complaints.",
                 "collision_only": "Poisson model using past collisions only.",
                 "persistence": "Predicts the previous week’s collision count."}[model])
-    top_only = st.checkbox("Show model’s top 50 areas only", key="top_only",
-                           help="Sort by predicted count descending, then area ID. Does not change the backend’s evaluation.")
-    st.caption("Fixed 500 m cells · No radius search or inspection-spacing rule")
     st.divider()
     fixture = st.checkbox("Development: use example forecast", key="fixture_mode",
-                          help="Synthetic values for UI development only. Never use as findings.")
+                          help="Synthetic model tables only; the observed map always uses real records.")
 
 bundle = None
 load_problem = None
 try:
     bundle = load_forecast_bundle(fixture=fixture)
-except FileNotFoundError as exc:
+except (FileNotFoundError, ForecastDataError, OSError, ValueError, KeyError, TypeError) as exc:
     load_problem = str(exc)
-except (ForecastDataError, OSError, ValueError, KeyError, TypeError) as exc:
-    load_problem = f"Forecast outputs rejected: {exc}"
 if bundle is None:
-    st.info("Explore the actual NYC records below. Model forecasts and comparisons will appear "
-            "when the forecast results are ready.")
     render_observations(forecast_week)
-    with st.expander("Forecast connection details"):
+    with st.expander("Model connection details"):
         st.caption(load_problem)
-        st.caption("The backend owner supplies the canonical forecast build. After it is available:")
+        st.caption("Observed records remain available. Model comparison needs a complete valid export set.")
         st.code("python -m src.build_forecast")
-        st.caption("The optional development example previews the forecast interface with labeled synthetic data.")
     st.stop()
 
 if fixture:
-    st.warning("DEVELOPMENT EXAMPLE — forecast-panel counts, predictions, metrics, and locations are "
-               "synthetic layout fixtures, not model findings. Downloads are disabled. "
-               "The separate Observed events tab continues to show real cleaned records.")
-elif bundle.stale_reasons:
-    st.warning("STALE SAVED RUN — these outputs do not match the available cleaned inputs. "
-               "They are shown only as saved historical results, not current predictions. "
-               "Downloads are disabled until the backend rebuilds or input provenance is restored.")
-    for reason in bundle.stale_reasons:
-        st.caption(reason)
+    st.warning("DEVELOPMENT EXAMPLE — model tables and evaluation use synthetic fixtures, not research findings. "
+               "Downloads are disabled. The observed map uses real cleaned records.")
 
 meta = bundle.metadata
 run_id = meta["run_id"]
-rows = week_rows(bundle, forecast_week, model, top_only)
 all_week = week_rows(bundle, forecast_week, model)
 first = all_week.iloc[0]
 feature_label = week_label(first["feature_start"])
 forecast_label = week_label(forecast_week)
-context = f"{MODELS[model]} · Forecast {forecast_label} · Inputs {feature_label}"
-st.caption(context)
-st.caption(f"{'SYNTHETIC EXAMPLE' if fixture else 'Saved run' if bundle.stale_reasons else 'Verified input hashes'} "
-           f"· Run {run_id} · Generated {meta['created_at_utc']}")
-
 weekly_metrics = bundle.metrics.loc[
     bundle.metrics["scope"].eq("week") & bundle.metrics["forecast_start"].eq(forecast_week)
 ]
-current_metric = weekly_metrics.loc[weekly_metrics["model"].eq(model)].iloc[0]
-summary = st.columns(4)
-summary[0].metric("Eligible 500 m cells", f"{len(all_week):,}")
-summary[1].metric("Weekly MAE · lower is better", f"{current_metric['mae']:.3f}")
-coverage = current_metric["top_k_coverage_pct"]
-summary[2].metric("Top-50 citywide collision coverage", "N/A" if pd.isna(coverage) else f"{coverage:.1f}%")
-summary[3].metric("Mapped citywide collisions · target week", f"{int(current_metric['citywide_collisions']):,}")
-st.caption("MAE and coverage are read from backend metrics, not recalculated here. "
-           "Top-50 coverage uses all mapped citywide collisions in the selected target week.")
-
-explore, observed, compare, method = st.tabs(["Forecast map", "Observed events", "Model comparison", "Data & method"])
 can_download = not fixture and not bundle.stale_reasons
-with explore:
-    map_column, table_column = st.columns([1.7, 1], gap="large")
-    with table_column:
-        st.subheader("Areas to explore")
-        st.caption(f"Showing {len(rows):,} of {len(all_week):,} eligible cells. "
-                   "Ordered by the selected model, with area-ID tie-breaking.")
-        ids = rows["area_id"].astype(str).tolist()
-        if st.session_state.get("selected_area") not in ids:
-            st.session_state["selected_area"] = ids[0]
-        selected_id = st.selectbox("Select an area", ids, key="selected_area", filter_mode=None)
-        visible_columns = ["area_id", "past_complaints", "past_collisions",
-                           PREDICTION_COLUMNS[model], "actual_collisions"]
-        st.dataframe(rows[visible_columns], hide_index=True, width="stretch", column_config={
-            "area_id": "Area", "past_complaints": "Prior-week complaints",
-            "past_collisions": "Prior-week collisions", "actual_collisions": "Observed next week",
-            PREDICTION_COLUMNS[model]: st.column_config.NumberColumn("Predicted next week", format="%.3f"),
-        })
-        st.download_button(
-            "Download displayed prediction rows", rows.to_csv(index=False).encode(),
-            f"predictions_{model}_{forecast_week}_{'top50' if top_only else 'all'}_{measure}.csv",
-            "text/csv", disabled=not can_download, key="download_predictions",
-        )
-        st.caption("Downloads preserve the canonical columns and all three predictions. "
-                   "The filename records the active model, week, map measure, and filter.")
-    with map_column:
-        st.subheader(MEASURES[measure])
-        if measure in {"past_complaints", "past_collisions"}:
-            st.caption(f"Observed inputs: {feature_label}. These precede the prediction period.")
-        elif measure == "actual_collisions":
-            st.caption(f"Retrospective outcome: {forecast_label}. Not a forecast or model input.")
-        else:
-            st.caption(f"Expected collisions: {forecast_label}. Fractional values represent expected counts.")
-        scale = color_scale_max(bundle, measure)
-        st.pydeck_chart(make_map(rows, model, measure, scale, selected_id), width="stretch", height=480,
-                        key=f"forecast_map_{forecast_week}_{model}_{measure}_{top_only}")
-        st.markdown('<div class="legend"></div>', unsafe_allow_html=True)
-        st.caption(f"Count scale: 0 → {scale:.2f}. Gray = zero. Larger/brighter markers = higher count. "
-                   "Scale fixed across models and weeks for this measure.")
-        st.caption("One marker per eligible 500 m cell at its exported center. Marker size is a visual "
-                   "encoding in pixels, not a geographic radius. CARTO / OpenStreetMap basemap.")
-
-    st.divider()
-    st.subheader("Selected area · inputs, predictions, and outcome")
-    area = rows.loc[rows["area_id"].eq(selected_id)].iloc[0]
-    st.markdown(f"**{selected_id}** · {area['latitude']:.5f}, {area['longitude']:.5f} "
-                f"· Early-history activity band: `{area['activity_band']}`")
-    st.caption(f"Inputs {feature_label} → forecast {forecast_label}. Exported end dates are exclusive.")
-    inputs = st.columns(3)
-    inputs[0].metric("Prior-week signal complaints", int(area["past_complaints"]))
-    inputs[1].metric("Prior-week collisions", int(area["past_collisions"]))
-    inputs[2].metric("Observed target-week collisions", int(area["actual_collisions"]))
-    predictions = st.columns(3)
-    for column, model_id in zip(predictions, MODELS):
-        column.metric(MODELS[model_id], f"{area[PREDICTION_COLUMNS[model_id]]:.3f}")
-    st.caption("All models predict ALL mapped collisions, not only injury/fatal crashes. "
-               "These expected counts are not per-traveler risk or probabilities.")
-
+observed, compare, table, method = st.tabs(["Observed map", "Model comparison", "Prediction table", "Data & method"])
 with observed:
     render_observations(forecast_week)
 
 with compare:
+    if bundle.stale_reasons:
+        st.warning("MODEL INPUT MISMATCH — the saved model results were built from different input files. "
+                   "The observed map still shows your current cleaned records. Model downloads are disabled.")
+        for reason in bundle.stale_reasons:
+            st.caption(reason)
+        with st.expander("How to refresh model results"):
+            st.write("A file-content hash differs from the run metadata. If only Windows CRLF line endings "
+                     "differ from the expected LF file, the UI verifies that automatically. Other changes "
+                     "require checking the inputs and rebuilding the model exports.")
+            st.code("python -m src.build_forecast")
+    for note in bundle.provenance_notes:
+        st.caption(note)
+    st.caption(f"Run {run_id} · Generated {meta['created_at_utc']}")
+    current_metric = weekly_metrics.loc[weekly_metrics["model"].eq(model)].iloc[0]
+    summary = st.columns(3)
+    summary[0].metric("Weekly MAE · lower is better", f"{current_metric['mae']:.3f}")
+    coverage = current_metric["top_k_coverage_pct"]
+    summary[1].metric("Top-50 collision coverage", "N/A" if pd.isna(coverage) else f"{coverage:.1f}%")
+    summary[2].metric("Mapped citywide collisions · target week", f"{int(current_metric['citywide_collisions']):,}")
+    st.caption(f"{MODELS[model]} · {forecast_label}. Metrics are read from the backend exports.")
     st.subheader("Does adding complaints improve the forecast?")
     comparison_scope = st.radio("Comparison period", ["Selected week", "All four weeks"],
                                 horizontal=True, key="comparison_scope")
@@ -208,6 +140,32 @@ with compare:
                        f"metrics_{run_id}.csv", "text/csv", disabled=not can_download, key="download_metrics")
     st.caption("Download includes all weeks, pooled results, and activity bands. "
                "Report worse results honestly; no model is assumed to win.")
+
+
+with table:
+    st.subheader("Model predictions by area")
+    st.caption(f"Inputs {feature_label} → target {forecast_label}. Expected counts, not crash probabilities.")
+    if bundle.stale_reasons:
+        st.warning("Saved model table: input files differ from the recorded run. See Model comparison for details.")
+    top_only = st.checkbox("Show model’s top 50 areas only", key="top_only")
+    rows = week_rows(bundle, forecast_week, model, top_only)
+    ids = rows["area_id"].astype(str).tolist()
+    if st.session_state.get("selected_area") not in ids:
+        st.session_state["selected_area"] = ids[0]
+    selected_id = st.selectbox("Select an area", ids, key="selected_area", filter_mode=None)
+    visible = ["area_id", "past_complaints", "past_collisions", *PREDICTION_COLUMNS.values(), "actual_collisions"]
+    st.dataframe(rows[visible], hide_index=True, width="stretch")
+    area = rows.loc[rows["area_id"].eq(selected_id)].iloc[0]
+    st.caption(f"Selected area: {selected_id} · {area['latitude']:.5f}, {area['longitude']:.5f}")
+    st.dataframe(pd.DataFrame([
+        {"Model": MODELS[mid], "Expected collisions": area[column]}
+        for mid, column in PREDICTION_COLUMNS.items()
+    ]), hide_index=True, width="stretch")
+    st.caption(f"Observed outcome: {int(area['actual_collisions'])} collisions. "
+               f"Prior week: {int(area['past_complaints'])} complaints and {int(area['past_collisions'])} collisions.")
+    st.download_button("Download displayed prediction rows", rows.to_csv(index=False).encode(),
+                       f"predictions_{model}_{forecast_week}_{'top50' if top_only else 'all'}.csv",
+                       "text/csv", disabled=not can_download, key="download_predictions")
 
 with method:
     st.subheader("What the experiment measures")
