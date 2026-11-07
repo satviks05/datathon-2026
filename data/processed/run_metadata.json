@@ -1,0 +1,300 @@
+{
+  "activity_band_area_counts": {
+    "one": 629,
+    "two_plus": 336,
+    "zero": 215
+  },
+  "comparisons": [
+    {
+      "forecast_start": "2025-09-01",
+      "mae_reduction": 0.036104704663031395,
+      "reference": "persistence",
+      "relative_mae_improvement_pct": 4.076894880610244,
+      "scope": "week",
+      "top_k_coverage_difference_pp": -0.4013761467889907
+    },
+    {
+      "forecast_start": "2025-09-01",
+      "mae_reduction": 0.0026541821499715956,
+      "reference": "collision_only",
+      "relative_mae_improvement_pct": 0.3114715594868355,
+      "scope": "week",
+      "top_k_coverage_difference_pp": -0.4013761467889907
+    },
+    {
+      "forecast_start": "2025-09-08",
+      "mae_reduction": 0.11023399452599003,
+      "reference": "persistence",
+      "relative_mae_improvement_pct": 11.572607966251622,
+      "scope": "week",
+      "top_k_coverage_difference_pp": 0.0
+    },
+    {
+      "forecast_start": "2025-09-08",
+      "mae_reduction": 0.0022230340487537914,
+      "reference": "collision_only",
+      "relative_mae_improvement_pct": 0.26322692277667936,
+      "scope": "week",
+      "top_k_coverage_difference_pp": 0.0
+    },
+    {
+      "forecast_start": "2025-09-15",
+      "mae_reduction": 0.10489152448615036,
+      "reference": "persistence",
+      "relative_mae_improvement_pct": 10.772149599099862,
+      "scope": "week",
+      "top_k_coverage_difference_pp": -0.17172295363480305
+    },
+    {
+      "forecast_start": "2025-09-15",
+      "mae_reduction": 0.005342652037377826,
+      "reference": "collision_only",
+      "relative_mae_improvement_pct": 0.611161591123971,
+      "scope": "week",
+      "top_k_coverage_difference_pp": -0.17172295363480305
+    },
+    {
+      "forecast_start": "2025-09-22",
+      "mae_reduction": 0.13033899679680905,
+      "reference": "persistence",
+      "relative_mae_improvement_pct": 13.918553504093637,
+      "scope": "week",
+      "top_k_coverage_difference_pp": -0.4875076173065205
+    },
+    {
+      "forecast_start": "2025-09-22",
+      "mae_reduction": 0.003943981426734466,
+      "reference": "collision_only",
+      "relative_mae_improvement_pct": 0.48688383986833905,
+      "scope": "week",
+      "top_k_coverage_difference_pp": -0.4875076173065205
+    },
+    {
+      "forecast_start": null,
+      "mae_reduction": 0.09539230511799512,
+      "reference": "persistence",
+      "relative_mae_improvement_pct": 10.179780243204545,
+      "scope": "overall",
+      "top_k_coverage_difference_pp": -0.26451138868479074
+    },
+    {
+      "forecast_start": null,
+      "mae_reduction": 0.0035409624157093367,
+      "reference": "collision_only",
+      "relative_mae_improvement_pct": 0.4189372906996221,
+      "scope": "overall",
+      "top_k_coverage_difference_pp": -0.26451138868479074
+    }
+  ],
+  "created_at_utc": "2026-11-07T21:01:44.539105+00:00",
+  "eligible_area_count": 1180,
+  "evaluation_kind": "exploratory historical evaluation",
+  "evaluation_windows": [
+    {
+      "feature_end": "2025-09-01",
+      "feature_start": "2025-08-25",
+      "forecast_end": "2025-09-08",
+      "forecast_start": "2025-09-01"
+    },
+    {
+      "feature_end": "2025-09-08",
+      "feature_start": "2025-09-01",
+      "forecast_end": "2025-09-15",
+      "forecast_start": "2025-09-08"
+    },
+    {
+      "feature_end": "2025-09-15",
+      "feature_start": "2025-09-08",
+      "forecast_end": "2025-09-22",
+      "forecast_start": "2025-09-15"
+    },
+    {
+      "feature_end": "2025-09-22",
+      "feature_start": "2025-09-15",
+      "forecast_end": "2025-09-29",
+      "forecast_start": "2025-09-22"
+    }
+  ],
+  "grid_crs": "EPSG:32618",
+  "grid_size_m": 500,
+  "implementation_sha256": {
+    "build_forecast.py": "7a431933846516769abb6e32adfe343d46e6e903bdf6cb5a775b454c3ced3739",
+    "forecast_config.py": "e812349c0a1b24c52cb92b620114449a869996756fb28eefe6d5e976c30fb59f",
+    "forecast_features.py": "da42e47c99544f9dd57739c7fb4b7574bc8e519622794a8df2b077a3a77bfa87",
+    "forecast_metrics.py": "9048d39ff50db261c73a63d0d1e3c8302efd2adec2c6f84c1a85c1cd1467bcf3",
+    "forecast_models.py": "257bf9936fab5696c9dfd0ace0a6a9967141fa364aff09a22dd22aec0073bbe7"
+  },
+  "input_sha256": {
+    "collisions_clean.csv": "a9d6d0d89461e038a73732fa24fb3c55c50ebfce0b49a913b7bdcb0697960ea2",
+    "signal_complaints_clean.csv": "23d53ab12df3a8c69fc9dc695eca2ede7a2eb38f0de4f9c34fb20d27fb30c02c"
+  },
+  "limitations": [
+    "Exploratory historical evaluation: September has already been explored, not an untouched final test.",
+    "Only three training and four evaluation windows; neighboring cells are not independent experiments.",
+    "Eligible universe is frozen from August 1\u20137 complaints OR collisions; later outside-cell collisions are excluded from model rows but included in coverage denominators.",
+    "Traffic Signal Condition complaints only; reports are not verified signal defects.",
+    "Mapped event counts are not exposure-adjusted crash risk, causal effects, or injuries prevented.",
+    "Coordinate screening is a rough box, not an NYC boundary polygon; unusable coordinates are excluded.",
+    "Models and scalers are fit once on August training rows; later September features use observations available before each forecast date.",
+    "September 29\u201330 are outside complete seven-day evaluation target windows.",
+    "Half-open timestamps are interpreted as NYC local-clock time; no timezone offsets are encoded."
+  ],
+  "model_settings": {
+    "collision_only": {
+      "alpha": 1.0,
+      "coefficients": [
+        0.1278240542494015
+      ],
+      "converged": true,
+      "estimator": "PoissonRegressor",
+      "features": [
+        "past_collisions"
+      ],
+      "fit_intercept": true,
+      "intercept": -0.1973859126603324,
+      "max_iter": 1000,
+      "n_iter": 3,
+      "scaler_mean": [
+        0.5528129816184314
+      ],
+      "scaler_scale": [
+        0.5001551469184646
+      ],
+      "scaler_variance": [
+        0.25015517098903095
+      ],
+      "solver": "lbfgs",
+      "tol": 0.0001,
+      "training_rows": 3540,
+      "transform": "log1p -> StandardScaler"
+    },
+    "combined": {
+      "alpha": 1.0,
+      "coefficients": [
+        0.1276469996908182,
+        0.05636977475580031
+      ],
+      "converged": true,
+      "estimator": "PoissonRegressor",
+      "features": [
+        "past_collisions",
+        "past_complaints"
+      ],
+      "fit_intercept": true,
+      "intercept": -0.19901082973808698,
+      "max_iter": 1000,
+      "n_iter": 5,
+      "scaler_mean": [
+        0.5528129816184314,
+        0.2842417644871879
+      ],
+      "scaler_scale": [
+        0.5001551469184646,
+        0.4824892697149157
+      ],
+      "scaler_variance": [
+        0.25015517098903095,
+        0.23279589539003268
+      ],
+      "solver": "lbfgs",
+      "tol": 0.0001,
+      "training_rows": 3540,
+      "transform": "log1p -> StandardScaler"
+    },
+    "persistence": {
+      "method": "prediction = past_collisions"
+    }
+  },
+  "output_sha256": {
+    "features.csv": "224c29a54ce98f3d061504e28b78e1fbd8e47933332f43326aeb8a8c504dbd37",
+    "metrics.csv": "c1d6f103e9e157811ca9a3fea8f716cf22b940847c7c9f057aca395c19e53c41",
+    "predictions.csv": "516bf492ac755046113e614e2dfd01aeecce441927c692319a3f5dc95df284af"
+  },
+  "publication_contract": "CSVs are staged and replaced, metadata last. Consumers must validate matching run IDs and output_sha256 to reject interrupted/mixed publication.",
+  "rank_tie_break": "prediction descending, area_id lexicographically ascending",
+  "rows": {
+    "features.csv": 8260,
+    "metrics.csv": 24,
+    "predictions.csv": 4720
+  },
+  "run_id": "weekly-c1bc34e6c6b21e798abffaee1639c979999df595fa5cff5e570c3d818d710a02",
+  "runtime": {
+    "architecture": "x86_64",
+    "numpy": "2.2.6",
+    "pandas": "2.2.3",
+    "proj": "9.5.1",
+    "pyproj": "3.7.2",
+    "python": "3.12.14",
+    "scikit_learn": "1.7.2",
+    "scipy": "1.16.3"
+  },
+  "schema_version": 1,
+  "source_audit": {
+    "complaint_scope": "Traffic Signal Condition only",
+    "coordinate_screen": {
+      "latitude": [
+        40.4,
+        41.0
+      ],
+      "longitude": [
+        -74.4,
+        -73.6
+      ]
+    },
+    "coordinate_screen_is_city_boundary": false,
+    "distinct_collision_ids": 14066,
+    "distinct_complaint_ids": 6119,
+    "mapped_cleaned_collisions": 14066,
+    "mapped_cleaned_complaints": 6119,
+    "raw_audit_available": true,
+    "raw_collisions": {
+      "coordinate_exclusions": 460,
+      "mapped_rows": 14066,
+      "missing_coordinate_pairs": 119,
+      "other_outside_coordinate_bounds": 0,
+      "rows": 14526,
+      "zero_coordinate_pairs": 341
+    },
+    "raw_complaints": {
+      "all_categories_rows": 34676,
+      "excluded_other_categories": 28142,
+      "signal_category": {
+        "coordinate_exclusions": 415,
+        "mapped_rows": 6119,
+        "missing_coordinate_pairs": 415,
+        "other_outside_coordinate_bounds": 0,
+        "rows": 6534,
+        "zero_coordinate_pairs": 0
+      }
+    },
+    "raw_input_sha256": {
+      "nyc311_dot_aug_sep_2025.csv": "9f0ad302d8c8d5806d469753b33f0ac369e6b31d145e145a425adedfea96b11b",
+      "nyc_crashes_aug_sep_2025.csv": "a5bc1094d71ab286ad3dbf23614d2922fec92ce80d8f7de8919dfe87f8f09102"
+    },
+    "timestamp_interpretation": "NYC local-clock time; half-open windows"
+  },
+  "target": "all mapped collisions in next seven days",
+  "top_k": 50,
+  "training_windows": [
+    {
+      "feature_end": "2025-08-08",
+      "feature_start": "2025-08-01",
+      "forecast_end": "2025-08-15",
+      "forecast_start": "2025-08-08"
+    },
+    {
+      "feature_end": "2025-08-15",
+      "feature_start": "2025-08-08",
+      "forecast_end": "2025-08-22",
+      "forecast_start": "2025-08-15"
+    },
+    {
+      "feature_end": "2025-08-22",
+      "feature_start": "2025-08-15",
+      "forecast_end": "2025-08-29",
+      "forecast_start": "2025-08-22"
+    }
+  ],
+  "universe_end_exclusive": "2025-08-08",
+  "universe_start": "2025-08-01"
+}
