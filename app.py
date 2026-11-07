@@ -1,16 +1,16 @@
 """Streamlit presentation for canonical weekly collision forecast exports."""
 
 import json
-from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
 
 from ui.data import (
     MODELS, MEASURES, PREDICTION_COLUMNS, WEEKS, ForecastDataError,
-    color_scale_max, load_forecast_bundle, source_events_for_week, week_label, week_rows,
+    color_scale_max, load_forecast_bundle, week_label, week_rows,
 )
-from ui.map_view import make_map, make_source_map
+from ui.map_view import make_map
+from ui.observations import render_observations
 
 st.set_page_config(page_title="NYC | Collision Forecasts", page_icon="🚦", layout="wide")
 st.markdown("""<style>
@@ -18,6 +18,9 @@ st.markdown("""<style>
 [data-testid="stMainBlockContainer"] {padding-top: 5rem;}
 h1 {letter-spacing: -.045em; font-weight: 700; line-height: 1.2;}
 h2, h3 {letter-spacing: -.025em;}
+@media (min-width: 768px) {section[data-testid="stSidebar"] {min-width: 19rem;}}
+[data-baseweb="popover"] [role="option"] div {white-space: normal !important;
+    text-overflow: clip !important; overflow: visible !important;}
 [data-testid="stMetric"] {background: white; border: 1px solid #e2e8ed;
     border-radius: 12px; padding: 16px;}
 .eyebrow {font-size: .75rem; letter-spacing: .15em; color: #176b5b; font-weight: 700;}
@@ -35,6 +38,9 @@ with st.sidebar:
     forecast_week = st.selectbox("Forecast week", WEEKS, format_func=week_label, key="forecast_week", filter_mode=None)
     model = st.selectbox("Prediction model", list(MODELS), format_func=MODELS.get, key="prediction_model", filter_mode=None)
     measure = st.selectbox("Map measure", list(MEASURES), format_func=MEASURES.get, key="map_measure", filter_mode=None)
+    st.caption({"combined": "Poisson model using past collisions and signal complaints.",
+                "collision_only": "Poisson model using past collisions only.",
+                "persistence": "Predicts the previous week’s collision count."}[model])
     top_only = st.checkbox("Show model’s top 50 areas only", key="top_only",
                            help="Sort by predicted count descending, then area ID. Does not change the backend’s evaluation.")
     st.caption("Fixed 500 m cells · No radius search or inspection-spacing rule")
@@ -53,23 +59,7 @@ except (ForecastDataError, OSError, ValueError, KeyError, TypeError) as exc:
 if bundle is None:
     st.info("Explore the actual NYC records below. Model forecasts and comparisons will appear "
             "when the forecast results are ready.")
-    st.subheader("NYC · observed signal reports and collisions")
-    feature_start = (date.fromisoformat(forecast_week) - timedelta(days=7)).isoformat()
-    st.caption(f"Observed records: {week_label(feature_start)} · preceding the selected forecast week. "
-               "This map shows individual recorded events, not predictions.")
-    layers = st.columns(2)
-    show_reports = layers[0].checkbox("Show signal reports", True, key="source_reports")
-    show_collisions = layers[1].checkbox("Show collisions", True, key="source_collisions")
-    try:
-        reports, crashes = source_events_for_week(forecast_week)
-        st.pydeck_chart(make_source_map(reports if show_reports else reports.iloc[:0],
-                                       crashes if show_collisions else crashes.iloc[:0]),
-                        width="stretch", height=520, key=f"source_map_{forecast_week}")
-        st.caption(f"Blue: {len(reports):,} signal reports · Orange: {len(crashes):,} collisions. "
-                   "No synthetic results or model estimates are included.")
-    except (OSError, ValueError, KeyError) as exc:
-        st.warning("The observed-data map could not load the cleaned files.")
-        st.caption(str(exc))
+    render_observations(forecast_week)
     with st.expander("Forecast connection details"):
         st.caption(load_problem)
         st.caption("The backend owner supplies the canonical forecast build. After it is available:")
@@ -78,8 +68,9 @@ if bundle is None:
     st.stop()
 
 if fixture:
-    st.warning("DEVELOPMENT EXAMPLE — all counts, predictions, metrics, and locations below are "
-               "synthetic layout fixtures. They are not model findings. Downloads are disabled.")
+    st.warning("DEVELOPMENT EXAMPLE — forecast-panel counts, predictions, metrics, and locations are "
+               "synthetic layout fixtures, not model findings. Downloads are disabled. "
+               "The separate Observed events tab continues to show real cleaned records.")
 elif bundle.stale_reasons:
     st.warning("STALE SAVED RUN — these outputs do not match the available cleaned inputs. "
                "They are shown only as saved historical results, not current predictions. "
@@ -112,7 +103,7 @@ summary[3].metric("Mapped citywide collisions · target week", f"{int(current_me
 st.caption("MAE and coverage are read from backend metrics, not recalculated here. "
            "Top-50 coverage uses all mapped citywide collisions in the selected target week.")
 
-explore, compare, method = st.tabs(["Forecast map", "Model comparison", "Data & method"])
+explore, observed, compare, method = st.tabs(["Forecast map", "Observed events", "Model comparison", "Data & method"])
 can_download = not fixture and not bundle.stale_reasons
 with explore:
     map_column, table_column = st.columns([1.7, 1], gap="large")
@@ -170,6 +161,9 @@ with explore:
         column.metric(MODELS[model_id], f"{area[PREDICTION_COLUMNS[model_id]]:.3f}")
     st.caption("All models predict ALL mapped collisions, not only injury/fatal crashes. "
                "These expected counts are not per-traveler risk or probabilities.")
+
+with observed:
+    render_observations(forecast_week)
 
 with compare:
     st.subheader("Does adding complaints improve the forecast?")

@@ -28,7 +28,7 @@ These depend on the new backend PR; the older `src.build`/`src.train` modules an
 
 ## State and demo readiness
 
-The UI can be developed and checked before real model exports exist. In that case, startup shows an NYC-centered map of the real cleaned signal reports and collisions from the preceding week. Layer checkboxes and forecast-week selection update these observed records. This is an explicitly labeled observation view; it does not invent predictions or metrics. Missing-file diagnostics and backend setup commands are tucked into **Forecast connection details**. Enable **Development: use example forecast** to inspect a tiny static fixture. All fixture values and locations are synthetic; warnings remain visible and downloads are disabled. Fixture JSON is explicitly marked and cannot be loaded as a production run.
+The UI can be developed and checked before real model exports exist. In that case, startup shows an NYC-centered map of the real cleaned signal reports and collisions from the preceding week. The default **Area counts** view groups observations into approximately 500 m display bins, with larger circles indicating more events. **Individual events** shows equal-sized points for detailed inspection. Layer checkboxes and forecast-week selection update these observations. This is an explicitly labeled observation view; it does not invent predictions or metrics. Missing-file diagnostics and backend setup commands are tucked into **Forecast connection details**. Enable **Development: use example forecast** to inspect a tiny static fixture. All fixture values and locations are synthetic; warnings remain visible and downloads are disabled. Fixture JSON is explicitly marked and cannot be loaded as a production run.
 
 No real-model results are claimed by this UI PR. A real-data end-to-end demo requires the revised backend exports and an integration check. No PR merges are performed automatically; reviewed backend and UI changes need team approval.
 
@@ -41,7 +41,17 @@ No real-model results are claimed by this UI PR. A real-data end-to-end demo req
 - **Area selection:** dropdown; if filtering hides the selected area, reset to the top displayed cell. Map-click selection is not implemented.
 - **Comparison period:** selected week or pooled four-week evaluation. Activity-band MAE is always labeled as pooled.
 
-All dropdowns are selection-only with typing disabled using Streamlit's native `filter_mode=None`. This requires **Streamlit 1.67 or newer**, as specified in `ui/requirements.txt`; reinstall UI requirements when updating this branch. Header spacing clears Streamlit's fixed toolbar.
+All dropdowns are selection-only with typing disabled using Streamlit's native `filter_mode=None`. This requires **Streamlit 1.67 or newer**, as specified in `ui/requirements.txt`; reinstall UI requirements when updating this branch. Short labels, wrapping menu options, and a wider desktop sidebar prevent clipping; explanatory text appears below the controls. Header spacing clears Streamlit's fixed toolbar.
+
+### Observed-map concentrations and hover details
+
+The explorer is also available in the **Observed events** tab when real forecasts or development fixtures are loaded, so event-level investigation remains available after backend integration. Its observations are always real cleaned records, separately labeled from synthetic forecast fixtures.
+
+Observation bins use a local equirectangular display grid at latitude 40.7, with approximate 500 m sides. They are presentation-only; they are not the backend's exact EPSG:32618 eligibility/features grid and never change predictions or evaluation. All observations in the selected historical window are shown, not just model-eligible cells.
+
+Blue outlined circles show signal-report counts; orange filled circles show collision counts. Larger circles indicate higher counts, sharing the same size scale across the enabled layers; the scale can change when a layer is toggled or the week changes. Overlapping circles do not establish a signal–crash relationship. Toggle layers to inspect one dataset. The **Browse the underlying records** expander retains source IDs and detailed fields.
+
+Area hovers show event counts, date/time ranges, complaint types and status counts, or collision injury/death totals. Individual-event hovers show collision date/time and outcomes, or report creation date/time, type, status, and component. Complaint status is explicitly a source-snapshot attribute, not the status as of the creation date or proof of repair.
 
 The selected-area panel shows both historical counts, all three model predictions, and the later observed outcome. Zero-event cells remain visible. All models predict ALL collisions, rather than injury-only outcomes.
 
@@ -93,6 +103,7 @@ The suite covers:
 - Fixed model-comparison map scales and retained zero-event rows.
 - Explicit fixture labeling and disabled fixture downloads.
 - Read-only dropdown settings, literal map-pixel serialization, NYC camera bounds, and an actual-source map when model files are absent.
+- Descriptive event hover payloads, concentration/detail switching, larger markers for higher-count areas, and conservation of observed counts across display bins.
 - Missing/malformed/mixed-run/stale states, unsupported schema versions, and input-hash checks.
 - Cache invalidation when run IDs/files change.
 - An additional real-output startup/hash check that runs once all canonical production exports exist; otherwise explicitly skipped.

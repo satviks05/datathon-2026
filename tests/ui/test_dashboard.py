@@ -17,7 +17,7 @@ from streamlit.testing.v1 import AppTest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from ui import data
-from ui.map_view import map_frame, make_map
+from ui.map_view import map_frame, make_map, source_map_frame, make_source_map
 
 
 class ExportTestCase(unittest.TestCase):
@@ -249,6 +249,28 @@ class DashboardTests(ExportTestCase):
             enum = proto.DESCRIPTOR.fields_by_name["filter_mode"].enum_type
             self.assertEqual(enum.values_by_number[proto.filter_mode].name, "FILTER_MODE_NONE")
 
+    def test_source_map_detail_controls_and_descriptive_hover(self):
+        (self.directory / "predictions.csv").unlink()
+        for filename in data.SOURCES:
+            shutil.copyfile(ROOT / "data" / "processed" / filename, self.directory / filename)
+        app = self.app()
+        app.radio(key="source_view").set_value("Individual events").run()
+        self.assertFalse(app.exception)
+        reports, crashes = data.source_events_for_week(data.WEEKS[0])
+        config = json.loads(make_source_map(reports, crashes, "Individual events").to_json())
+        report_tooltip = config["layers"][0]["data"][0]["event_detail"]
+        crash_tooltip = config["layers"][1]["data"][0]["event_detail"]
+        self.assertIn("Created:", report_tooltip)
+        self.assertIn("Type: Traffic Signal Condition", report_tooltip)
+        self.assertIn("Status (source snapshot):", report_tooltip)
+        self.assertIn("Collision\nOccurred:", crash_tooltip)
+        self.assertIn("Injured people:", crash_tooltip)
+        app.checkbox(key="fixture_mode").check().run()
+        self.assertFalse(app.exception)
+        self.assertTrue(any("NYC · observed" in title.value for title in app.subheader))
+        self.assertEqual(app.radio(key="source_view").value, "Individual events")
+
+
     def test_top50_filter_resets_a_hidden_selection(self):
         bundle = data.load_forecast_bundle()
         frames = []
@@ -265,6 +287,30 @@ class DashboardTests(ExportTestCase):
             app.checkbox(key="top_only").check().run()
             self.assertFalse(app.exception)
             self.assertEqual(app.selectbox(key="selected_area").value, "cell_0000_9020")
+
+
+class ConcentrationMapTests(unittest.TestCase):
+    def test_display_bins_conserve_events_and_group_nearby_reports(self):
+        reports = pd.DataFrame({
+            "unique_key": ["1", "2", "3"],
+            "latitude": [40.75, 40.75, 40.81], "longitude": [-73.99, -73.99, -73.94],
+            "created_date": ["2025-08-25T12:00:00"] * 3,
+            "complaint_type": ["Traffic Signal Condition"] * 3,
+            "descriptor": ["Controller"] * 3, "status": ["Closed", "Open", "Open"],
+        })
+        grouped = source_map_frame(reports, "Signal report")
+        self.assertEqual(len(grouped), 2)
+        self.assertEqual(grouped.display_count.sum(), 3)
+        self.assertEqual(sorted(grouped.display_count), [1, 2])
+        self.assertIn("2 signal reports", grouped.loc[grouped.display_count.eq(2), "event_detail"].iloc[0])
+        detail = source_map_frame(reports, "Signal report", "Individual events")
+        self.assertEqual(len(detail), 3)
+        deck = json.loads(make_source_map(reports, pd.DataFrame()).to_json())
+        markers = deck["layers"][0]["data"]
+        by_count = {marker["display_count"]: marker["marker_pixels"] for marker in markers}
+        self.assertGreater(by_count[2], by_count[1])
+        self.assertLessEqual(by_count[2], 29)
+
 
 
 @unittest.skipUnless(all((data.DATA / filename).exists() for filename in data.EXPORTS),
