@@ -25,9 +25,15 @@ def render_observations(forecast_week):
                         width="stretch", height=520, key=f"source_map_{forecast_week}_{source_view}")
         st.caption(f"Blue: {len(reports):,} signal reports · Orange: {len(crashes):,} collisions.")
         if source_view == "Area counts":
-            st.caption("Larger circles indicate more recorded events in an approximately 500 m display bin. "
-                       "Blue outlines = signal reports; orange fill = collisions. Both layers share a count-size scale. "
-                       "Toggle layers to inspect overlap. Display bins do not change model features or evaluation.")
+            st.markdown('''<div style="display:flex;gap:24px;align-items:center;min-height:55px;">
+<span style="display:flex;align-items:center;gap:7px;"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#da6337;"></span>1 event</span>
+<span style="display:flex;align-items:center;gap:7px;"><span style="display:inline-block;width:27px;height:27px;border-radius:50%;background:#da6337;"></span>5 events</span>
+<span style="display:flex;align-items:center;gap:7px;"><span style="display:inline-block;width:38px;height:38px;border-radius:50%;background:#da6337;"></span>10 events</span>
+</div>''', unsafe_allow_html=True)
+            st.caption("Blue = signal reports · Orange = collisions. Circle area represents recorded count: "
+                       "5 events make a circle five times the area of 1 event (about 2.2× the diameter). "
+                       "The same size rule applies across weeks and layers; sizes are capped above 100 events. "
+                       "Each group is an approximately 500 m display bin, independent of model calculations.")
         else:
             st.caption("Hover a point for dates, complaint type/status, or collision outcomes. "
                        "Equal-sized markers represent individual records.")

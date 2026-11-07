@@ -17,7 +17,7 @@ from streamlit.testing.v1 import AppTest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from ui import data
-from ui.map_view import map_frame, make_map, source_map_frame, make_source_map
+from ui.map_view import source_map_frame, make_source_map
 
 
 class ExportTestCase(unittest.TestCase):
@@ -90,9 +90,23 @@ class ExportValidationTests(ExportTestCase):
     def test_stale_hash_and_missing_input_are_flagged(self):
         (self.directory / data.SOURCES[0]).write_bytes(b"changed input")
         bundle = data.load_forecast_bundle()
-        self.assertIn("Input hash changed", bundle.stale_reasons[0])
+        self.assertIn("Input file differs", bundle.stale_reasons[0])
         (self.directory / data.SOURCES[1]).unlink()
         self.assertEqual(len(data.load_forecast_bundle().stale_reasons), 2)
+
+    def test_windows_newlines_are_verified_without_hiding_changed_records(self):
+        filename = data.SOURCES[0]
+        lf_content = b"id,value\n1,2\n"
+        path = self.directory / filename
+        meta = json.loads((self.directory / "run_metadata.json").read_text())
+        meta["input_sha256"][filename] = sha256(lf_content).hexdigest()
+        self.update_meta(input_sha256=meta["input_sha256"])
+        path.write_bytes(lf_content.replace(b"\n", b"\r\n"))
+        bundle = data.load_forecast_bundle()
+        self.assertFalse(bundle.stale_reasons)
+        self.assertTrue(any("CRLF" in note for note in bundle.provenance_notes))
+        path.write_bytes(b"id,value\r\n1,999\r\n")
+        self.assertTrue(data.load_forecast_bundle().stale_reasons)
 
     def test_malformed_predictions_rejected(self):
         mutations = {
@@ -132,7 +146,7 @@ class ExportValidationTests(ExportTestCase):
         self.assertNotEqual(before.metadata["run_id"], after.metadata["run_id"])
         self.assertEqual(after.predictions.run_id.unique().tolist(), ["second-run"])
 
-    def test_top50_ties_and_scale_are_comparable(self):
+    def test_top50_table_ties_are_deterministic(self):
         bundle = data.load_forecast_bundle()
         week = bundle.predictions.iloc[:1]
         rows = []
@@ -145,19 +159,9 @@ class ExportValidationTests(ExportTestCase):
         top = data.week_rows(bundle, data.WEEKS[0], "combined", True)
         self.assertEqual(top.area_id.iloc[0], "cell_0000_9020")
         self.assertEqual(top.area_id.iloc[-1], "cell_0049_9020")
-        scale = data.color_scale_max(bundle, "predicted")
-        combined = map_frame(bundle.predictions, "combined", "predicted", scale)
-        baseline = map_frame(bundle.predictions, "collision_only", "predicted", scale)
-        self.assertTrue(combined.marker_pixels.gt(baseline.marker_pixels).all())
-        self.assertEqual(len(combined), 60)
 
-    def test_map_serializes_literal_pixel_units_and_nyc_camera(self):
-        bundle = data.load_forecast_bundle()
-        rows = data.week_rows(bundle, data.WEEKS[0], "combined")
-        deck = make_map(rows, "combined", "predicted", data.color_scale_max(bundle, "predicted"), rows.area_id.iloc[0])
-        config = json.loads(deck.to_json())
-        self.assertEqual(config["layers"][0]["radiusUnits"], "pixels")
-        self.assertEqual(config["layers"][0]["radiusMaxPixels"], 17)
+    def test_observed_map_camera_is_constrained_to_nyc(self):
+        config = json.loads(make_source_map(pd.DataFrame(), pd.DataFrame()).to_json())
         self.assertEqual(config["initialViewState"]["minZoom"], 9)
         self.assertAlmostEqual(config["initialViewState"]["latitude"], 40.715)
         self.assertAlmostEqual(config["initialViewState"]["longitude"], -73.96)
@@ -171,11 +175,10 @@ class DashboardTests(ExportTestCase):
         app = self.app()
         self.assertFalse(app.exception)
         self.assertEqual(len(app.slider), 0)
-        self.assertEqual(app.metric[0].value, "3")
+        self.assertEqual(app.metric[0].value, "0.133")
         self.assertTrue(all(not button.proto.disabled for button in app.get("download_button")))
         app.selectbox(key="forecast_week").select("2025-09-22").run()
         app.selectbox(key="prediction_model").select("persistence").run()
-        app.selectbox(key="map_measure").select("actual_collisions").run()
         app.checkbox(key="top_only").check().run()
         app.selectbox(key="selected_area").select("cell_1162_9015").run()
         app.radio(key="comparison_scope").set_value("All four weeks").run()
@@ -185,14 +188,11 @@ class DashboardTests(ExportTestCase):
             app.run()
         prediction_call = next(call for call in download.call_args_list
                                if call.args[0] == "Download displayed prediction rows")
-        self.assertIn("persistence_2025-09-22_top50_actual_collisions", prediction_call.args[2])
+        self.assertIn("persistence_2025-09-22_top50", prediction_call.args[2])
         exported = pd.read_csv(BytesIO(prediction_call.args[1]))
         self.assertEqual(set(exported.forecast_start), {"2025-09-22"})
         self.assertEqual(len(exported), 3)
         # Every measure/model/week should render without reusing old ranking controls.
-        for measure in data.MEASURES:
-            app.selectbox(key="map_measure").select(measure).run()
-            self.assertFalse(app.exception)
         for model in data.MODELS:
             app.selectbox(key="prediction_model").select(model).run()
             self.assertFalse(app.exception)
@@ -204,7 +204,7 @@ class DashboardTests(ExportTestCase):
         (self.directory / "predictions.csv").unlink()
         app = self.app()
         self.assertFalse(app.exception)
-        self.assertTrue(any("Explore the actual NYC records" in element.value for element in app.info))
+        self.assertTrue(any("Model comparison needs" in element.value for element in app.caption))
         self.assertEqual(len(app.metric), 0)
         app.checkbox(key="fixture_mode").check().run()
         self.assertFalse(app.exception)
@@ -217,7 +217,7 @@ class DashboardTests(ExportTestCase):
         (self.directory / data.SOURCES[0]).write_bytes(b"new inputs")
         app = self.app()
         self.assertFalse(app.exception)
-        self.assertTrue(any("STALE SAVED RUN" in element.value for element in app.warning))
+        self.assertTrue(any("MODEL INPUT MISMATCH" in element.value for element in app.warning))
         self.assertTrue(all(button.proto.disabled for button in app.get("download_button")))
 
     def test_mixed_run_stops_rendering(self):
@@ -244,10 +244,20 @@ class DashboardTests(ExportTestCase):
 
     def test_forecast_controls_disable_typing(self):
         app = self.app()
-        for key in ("forecast_week", "prediction_model", "map_measure", "selected_area"):
+        for key in ("forecast_week", "prediction_model", "selected_area"):
             proto = app.selectbox(key=key).proto
             enum = proto.DESCRIPTOR.fields_by_name["filter_mode"].enum_type
             self.assertEqual(enum.values_by_number[proto.filter_mode].name, "FILTER_MODE_NONE")
+
+    def test_observed_map_is_primary_and_forecast_map_is_removed(self):
+        for filename in data.SOURCES:
+            shutil.copyfile(ROOT / "data" / "processed" / filename, self.directory / filename)
+        app = self.app()
+        self.assertFalse(app.exception)
+        self.assertEqual(app.tabs[0].label, "Observed map")
+        self.assertFalse(any(tab.label == "Forecast map" for tab in app.tabs))
+        self.assertFalse(any(box.key == "map_measure" for box in app.selectbox))
+        self.assertTrue(any("Circle area represents recorded count" in text.value for text in app.caption))
 
     def test_source_map_detail_controls_and_descriptive_hover(self):
         (self.directory / "predictions.csv").unlink()
@@ -290,6 +300,20 @@ class DashboardTests(ExportTestCase):
 
 
 class ConcentrationMapTests(unittest.TestCase):
+    def test_five_events_have_five_times_the_circle_area_of_one(self):
+        reports = pd.DataFrame({
+            "unique_key": [str(i) for i in range(6)],
+            "latitude": [40.75] * 5 + [40.81], "longitude": [-73.99] * 5 + [-73.94],
+            "created_date": ["2025-08-25T12:00:00"] * 6,
+            "complaint_type": ["Traffic Signal Condition"] * 6,
+            "descriptor": ["Controller"] * 6, "status": ["Open"] * 6,
+        })
+        config = json.loads(make_source_map(reports, pd.DataFrame()).to_json())
+        markers = {row["display_count"]: row["marker_pixels"] for row in config["layers"][0]["data"]}
+        self.assertAlmostEqual((markers[5] / markers[1]) ** 2, 5)
+        self.assertAlmostEqual(markers[1], 6)
+        self.assertEqual(config["layers"][0]["radiusMaxPixels"], 60)
+
     def test_display_bins_conserve_events_and_group_nearby_reports(self):
         reports = pd.DataFrame({
             "unique_key": ["1", "2", "3"],
@@ -309,7 +333,7 @@ class ConcentrationMapTests(unittest.TestCase):
         markers = deck["layers"][0]["data"]
         by_count = {marker["display_count"]: marker["marker_pixels"] for marker in markers}
         self.assertGreater(by_count[2], by_count[1])
-        self.assertLessEqual(by_count[2], 29)
+        self.assertLessEqual(by_count[2], 60)
 
 
 

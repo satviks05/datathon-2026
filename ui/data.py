@@ -19,12 +19,6 @@ MODELS = {
     "persistence": "Previous week",
 }
 PREDICTION_COLUMNS = {model: f"{model}_prediction" for model in MODELS}
-MEASURES = {
-    "predicted": "Predicted collisions",
-    "past_complaints": "Signal complaints",
-    "past_collisions": "Past collisions",
-    "actual_collisions": "Observed collisions",
-}
 WEEKS = ("2025-09-01", "2025-09-08", "2025-09-15", "2025-09-22")
 BANDS = {"zero", "one", "two_plus"}
 SOURCES = ("signal_complaints_clean.csv", "collisions_clean.csv")
@@ -56,6 +50,7 @@ class ForecastBundle:
     metadata: dict
     stale_reasons: tuple = ()
     fixture: bool = False
+    provenance_notes: tuple = ()
 
 
 def signature(path):
@@ -67,10 +62,13 @@ def signature(path):
 
 
 @st.cache_data(show_spinner=False)
-def source_hash(path, file_signature):
+def source_hash(path, file_signature, normalize_newlines=False):
     # The signature is part of the cache key; don't prefix it with an underscore.
     with Path(path).open("rb") as source:
-        return sha256(source.read()).hexdigest()
+        content = source.read()
+    if normalize_newlines:
+        content = content.replace(b"\r\n", b"\n")
+    return sha256(content).hexdigest()
 
 
 def _require(table, columns, name):
@@ -248,7 +246,7 @@ def _read_bundle(directory, source_directory, file_signatures, run_id, fixture):
         raise ForecastDataError("Outputs changed during loading; retry after the build finishes")
     _validate_predictions(predictions, metadata)
     _validate_metrics(metrics, predictions, metadata)
-    stale = []
+    stale, notes = [], []
     for filename in SOURCES:
         expected = _expected_hash(metadata, filename)
         if fixture:
@@ -257,11 +255,14 @@ def _read_bundle(directory, source_directory, file_signatures, run_id, fixture):
         if not path.exists():
             stale.append(f"Cannot verify missing cleaned input: {filename}")
         elif source_hash(str(path), signature(path)) != expected:
-            stale.append(f"Input hash changed: {filename}")
+            if source_hash(str(path), signature(path), normalize_newlines=True) == expected:
+                notes.append(f"{filename}: verified after normalizing Windows CRLF line endings to LF")
+            else:
+                stale.append(f"Input file differs from the model run: {filename}")
     paths = [directory / name for name in EXPORTS] + [source_directory / name for name in SOURCES]
     if tuple(signature(path) for path in paths) != file_signatures:
         raise ForecastDataError("Files changed during loading; retry after the build finishes")
-    return ForecastBundle(predictions, metrics, metadata, tuple(stale), fixture)
+    return ForecastBundle(predictions, metrics, metadata, tuple(stale), fixture, tuple(notes))
 
 
 def load_forecast_bundle(*, fixture=False):
@@ -282,17 +283,6 @@ def week_rows(bundle, week, model, top_only=False):
     rows = bundle.predictions.loc[bundle.predictions["forecast_start"].eq(week)].copy()
     rows = rows.sort_values([PREDICTION_COLUMNS[model], "area_id"], ascending=[False, True], kind="stable")
     return rows.head(50).copy() if top_only else rows
-
-
-def map_values(rows, model, measure):
-    column = PREDICTION_COLUMNS[model] if measure == "predicted" else measure
-    return rows[column]
-
-
-def color_scale_max(bundle, measure):
-    # A global scale prevents model/week changes from exaggerating visual differences.
-    columns = list(PREDICTION_COLUMNS.values()) if measure == "predicted" else [measure]
-    return max(float(bundle.predictions[columns].max().max()), 1.0)
 
 
 def week_label(start):
