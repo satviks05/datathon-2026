@@ -45,9 +45,9 @@ run_id,area_id,latitude,longitude,activity_band,feature_start,feature_end,foreca
 SYNTHETIC-UI-EXAMPLE,cell_1170_9010,40.699,-73.991,zero,2025-08-25,2025-09-01,2025-09-01,2025-09-08,0,0,0,0.0,0.4,0.5
 ```
 
-## Integration requests (outside backend ownership)
+## Integration status and owner requests
 
-- UI owner: replace radius/old ranking controls with forecast week, model, and count measure; read `predictions.csv`, `metrics.csv`, and metadata. Do not use `selected_targets.csv` / `evaluation.csv`, recalculate competing metrics, or silently substitute old results.
+- The forecast UI is now on `main` and merged into this branch. It reads the canonical predictions, metrics, and metadata without invoking the old ranking API. The real bundle passes its schema/hash checks with no stale or fixture warning. Real week/model/measure changes, top-50 filtering, pooled comparison, and enabled downloads were checked with Streamlit AppTest. This backend does not modify the UI owner's implementation.
 - Shared-file owner: add narrow `.gitignore` exceptions for only `features.csv`, `predictions.csv`, `metrics.csv`, and `run_metadata.json` under `data/processed/` for discoverability. The four stable, backend-owned demo exports are explicitly committed; `.gitignore` is unchanged and no unrelated generated artifacts are added. Future changes to these tracked files are already visible to Git.
 - Methodology owner: update README/setup/presentation to the new command and the actual exploratory results. No exposure, causality, statistical significance, or guaranteed complaint benefit claim.
 
@@ -95,4 +95,6 @@ The second cell legitimately acquires collisions later despite its fixed zero ea
 
 Exports are staged only after fitting/validation succeed, with metadata replaced last. A filesystem cannot atomically replace four ordinary files as a unit: consumers must validate both run IDs and the metadata's CSV SHA-256s to reject an interrupted or mixed publication. No model binaries are required by the UI.
 
-Validation: **37 backend tests** (17 new weekly-forecast tests, 20 legacy regression tests) and **4 existing UI tests** passed. The UI tests concern the old dashboard; they do not establish integration of the new forecast files. A separately created Python 3.12 virtual environment installed only `requirements-model.txt` and reproduced all three canonical CSVs byte for byte; metadata matched except its UTC creation timestamp. No source CSVs, cleaner, UI files, root requirements, or shared documentation were changed.
+Validation after merging the forecast UI from `main`: **37 backend tests** (17 new weekly-forecast tests, 20 legacy regression tests) and **18 forecast UI tests** passed, including the real-output startup/hash test (not skipped). A separately created Python 3.12 virtual environment installed only `requirements-model.txt` and reproduced all three canonical CSVs byte for byte; metadata matched except its UTC creation timestamp. No source CSVs, cleaner, root requirements, or shared documentation were edited; UI changes come solely from merging their owner's reviewed `main` commits.
+
+A headless Chromium check loaded the real forecast dashboard with no page exceptions, switched to pooled comparison, and downloaded 1,180 September 1 prediction rows with the current run ID. Cell markers rendered, but CARTO background tiles were blocked by the managed network policy (`basemaps.cartocdn.com`, proxy HTTP 403). Full basemap verification requires applying the pending CARTO domain settings. No fixture or stale-data state was used for this check.
