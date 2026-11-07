@@ -8,7 +8,9 @@ import pandas as pd
 
 from . import config
 from .engine import AnalysisEngine, date_window, validate_controls
-from .loaders import input_version
+from .loaders import input_version, load_events
+from .regression import AugustOnlyRegression
+from .spatial import build_candidates
 
 
 @lru_cache(maxsize=2)
@@ -21,16 +23,33 @@ def _engine(data_dir=None):
     return _load_engine(str(directory), input_version(directory))
 
 
+@lru_cache(maxsize=2)
+def _load_august_model(train_dir, version):
+    reports, crashes = load_events(train_dir)
+    return AugustOnlyRegression(reports, crashes, build_candidates(reports))
+
+
+def get_september_forecast(start_date=config.DEFAULT_START_DATE, end_date=config.DEFAULT_END_DATE,
+                          radius_m=config.DEFAULT_RADIUS_M, *, train_dir=None):
+    """Forecast-only interface: reads August files, requires NO September file."""
+    validate_controls(radius_m)
+    start, stop = date_window(start_date, end_date)
+    directory = Path(train_dir or config.DATA_DIR / "august_train").resolve()
+    model = _load_august_model(str(directory), input_version(directory))
+    return model.aggregate(start.date().isoformat(), (stop - pd.Timedelta(days=1)).date().isoformat(), radius_m).copy(deep=True)
+
+
 def get_config(*, data_dir=None):
     return dict(
         radii_m=list(config.RADII), budgets=list(config.BUDGETS), strategies=list(config.STRATEGIES),
         default_radius_m=config.DEFAULT_RADIUS_M, default_budget=config.DEFAULT_BUDGET,
-        default_strategy=config.DEFAULT_STRATEGY, min_date=config.MIN_DATE, max_date=config.MAX_DATE,
+        default_strategy=config.DEFAULT_STRATEGY, min_date=config.FORECAST_START, max_date=config.FORECAST_END,
+        source_min_date=config.MIN_DATE, source_max_date=config.MAX_DATE,
         default_start_date=config.DEFAULT_START_DATE, default_end_date=config.DEFAULT_END_DATE,
         date_step_days=1, radius_step_m=25, grid_m=config.GRID_M, spacing_m=config.SPACING_M,
         method_version=config.METHOD_VERSION,
         forecast_days=config.FORECAST_DAYS, model_training_end_date=config.MODEL_TRAIN_END,
-        training_lookback_days=list(config.TRAIN_LOOKBACK_DAYS),
+        lag_days=config.LAG_DAYS, forecast_mode="August-only frozen September forecast",
         input_version=input_version(Path(data_dir or config.DATA_DIR)),
     )
 
@@ -67,15 +86,19 @@ def get_area_evidence(target_id, radius_m, period="august", *, start_date=None, 
 
 
 def get_historical_evaluation(radius_m=config.DEFAULT_RADIUS_M, budget=config.DEFAULT_BUDGET, *, data_dir=None):
-    """Four fixed complete September outcome weeks; August-fitted coefficients."""
+    """Full September forecast comparison; all model inputs are August only."""
     validate_controls(radius_m, budget)
     return _engine(data_dir).historical_evaluation(int(radius_m), int(budget)).copy(deep=True)
 
 
-def get_model_metrics(radius_m=config.DEFAULT_RADIUS_M, *, data_dir=None):
-    """Out-of-time MAE/RMSE/R2, versus historical-rate and training-mean baselines."""
+def get_model_metrics(radius_m=config.DEFAULT_RADIUS_M, *, start_date=config.DEFAULT_START_DATE,
+                      end_date=config.DEFAULT_END_DATE, data_dir=None):
+    """Matching selected-September MAE/RMSE/R2 for all three forecast targets."""
     validate_controls(radius_m)
-    return _engine(data_dir).regression.test_metrics(radius_m).copy(deep=True)
+    date_window(start_date, end_date)
+    if pd.Timestamp(start_date) < pd.Timestamp(config.FORECAST_START):
+        raise ValueError("Model metrics compare September forecasts only")
+    return _engine(data_dir).model_metrics(str(pd.Timestamp(start_date).date()), str(pd.Timestamp(end_date).date()), radius_m).copy(deep=True)
 
 
 def get_data_quality(*, data_dir=None):

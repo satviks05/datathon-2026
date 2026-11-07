@@ -1,6 +1,7 @@
 {
-  "input_version": "965d9797bfa670a9f7d976aab3756d6158ada035d7133a8106ccb3a1c73e818f",
-  "method_version": "signal-area-ols-7day-v1",
+  "input_version": "df7654f42d353c82f977dcd43e8e9f9e87884eb08d8e66b0fa017edb9f34ab5d",
+  "training_input_version": "f38c6ac1740104fbe430e6b4dc4d03fc95f4c507e0541efb0352625a8883a631",
+  "method_version": "signal-area-august-only-september-v2",
   "runtime": {
     "python": "3.13.7",
     "pandas": "2.2.3",
@@ -29,23 +30,22 @@
     "default_radius_m": 250,
     "default_budget": 50,
     "default_strategy": "linear_regression",
-    "min_date": "2025-08-01",
+    "min_date": "2025-09-01",
     "max_date": "2025-09-30",
-    "default_start_date": "2025-08-25",
-    "default_end_date": "2025-08-31",
+    "source_min_date": "2025-08-01",
+    "source_max_date": "2025-09-30",
+    "default_start_date": "2025-09-01",
+    "default_end_date": "2025-09-30",
     "date_step_days": 1,
     "radius_step_m": 25,
     "grid_m": 50,
     "spacing_m": 250,
-    "method_version": "signal-area-ols-7day-v1",
-    "forecast_days": 7,
+    "method_version": "signal-area-august-only-september-v2",
+    "forecast_days": 30,
     "model_training_end_date": "2025-08-31",
-    "training_lookback_days": [
-      7,
-      14,
-      21
-    ],
-    "input_version": "965d9797bfa670a9f7d976aab3756d6158ada035d7133a8106ccb3a1c73e818f"
+    "lag_days": 7,
+    "forecast_mode": "August-only frozen September forecast",
+    "input_version": "df7654f42d353c82f977dcd43e8e9f9e87884eb08d8e66b0fa017edb9f34ab5d"
   },
   "data_quality": {
     "signal_reports": 6119,
@@ -71,7 +71,7 @@
         "harm_crashes": 3400
       }
     },
-    "input_version": "965d9797bfa670a9f7d976aab3756d6158ada035d7133a8106ccb3a1c73e818f",
+    "input_version": "df7654f42d353c82f977dcd43e8e9f9e87884eb08d8e66b0fa017edb9f34ab5d",
     "assumptions": [
       "Source timestamps are NYC local clock; no offsets supplied.",
       "Grid grouping is approximate; radius/spacing use haversine meters.",
@@ -84,225 +84,424 @@
     "collisions_source": 14526,
     "collisions_excluded": 460
   },
-  "ranking_period": [
-    "2025-08-25",
-    "2025-08-31"
-  ],
-  "evaluation_period": [
-    "2025-09-01",
-    "2025-09-28"
-  ],
-  "evaluation_excluded_dates": [
-    "2025-09-29",
-    "2025-09-30"
-  ],
-  "evaluation_exclusion_reason": "Only complete nonoverlapping seven-day outcome weeks are evaluated.",
-  "models": {
-    "100": {
-      "design_rank": 3,
-      "training_rows": 65241,
-      "training_window_count": 33,
-      "training_target_mean": 0.09241121380726844,
-      "training_features_start_date": "2025-08-01",
-      "training_labels_end_date": "2025-08-31",
-      "training_last_feature_end_date": "2025-08-24",
-      "feature_names": [
-        "signal_reports_per_7_days",
-        "harm_crashes_per_7_days"
-      ],
-      "lookback_days": [
-        7,
-        14,
-        21
-      ],
-      "forecast_days": 7,
-      "intercept": 0.08789623262262496,
-      "coefficients": {
-        "signal_reports_per_7_days": 4.520214266319142e-05,
-        "harm_crashes_per_7_days": 0.04727387253789328
+  "split": {
+    "source_input_version": "df7654f42d353c82f977dcd43e8e9f9e87884eb08d8e66b0fa017edb9f34ab5d",
+    "periods": {
+      "august_train": {
+        "signal_reports": 3276,
+        "collisions": 6777,
+        "role": "training and forecast inputs"
       },
-      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
-      "target": "injury OR fatal crashes in the next seven days within the selected radius",
-      "postprocessing": "max(raw_prediction, 0); raw predictions also retained",
-      "uncertainty": "No calibrated probabilities or confidence intervals; spatial/temporal samples overlap"
-    },
-    "125": {
-      "design_rank": 3,
-      "training_rows": 65241,
-      "training_window_count": 33,
-      "training_target_mean": 0.11635321347005717,
-      "training_features_start_date": "2025-08-01",
-      "training_labels_end_date": "2025-08-31",
-      "training_last_feature_end_date": "2025-08-24",
-      "feature_names": [
-        "signal_reports_per_7_days",
-        "harm_crashes_per_7_days"
-      ],
-      "lookback_days": [
-        7,
-        14,
-        21
-      ],
-      "forecast_days": 7,
-      "intercept": 0.10992316575506526,
-      "coefficients": {
-        "signal_reports_per_7_days": -0.001988873616600899,
-        "harm_crashes_per_7_days": 0.06191167089702212
-      },
-      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
-      "target": "injury OR fatal crashes in the next seven days within the selected radius",
-      "postprocessing": "max(raw_prediction, 0); raw predictions also retained",
-      "uncertainty": "No calibrated probabilities or confidence intervals; spatial/temporal samples overlap"
-    },
-    "150": {
-      "design_rank": 3,
-      "training_rows": 65241,
-      "training_window_count": 33,
-      "training_target_mean": 0.13698441164298525,
-      "training_features_start_date": "2025-08-01",
-      "training_labels_end_date": "2025-08-31",
-      "training_last_feature_end_date": "2025-08-24",
-      "feature_names": [
-        "signal_reports_per_7_days",
-        "harm_crashes_per_7_days"
-      ],
-      "lookback_days": [
-        7,
-        14,
-        21
-      ],
-      "forecast_days": 7,
-      "intercept": 0.12893272344059495,
-      "coefficients": {
-        "signal_reports_per_7_days": -0.003273675804734602,
-        "harm_crashes_per_7_days": 0.0694214947758325
-      },
-      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
-      "target": "injury OR fatal crashes in the next seven days within the selected radius",
-      "postprocessing": "max(raw_prediction, 0); raw predictions also retained",
-      "uncertainty": "No calibrated probabilities or confidence intervals; spatial/temporal samples overlap"
-    },
-    "175": {
-      "design_rank": 3,
-      "training_rows": 65241,
-      "training_window_count": 33,
-      "training_target_mean": 0.19073895249919529,
-      "training_features_start_date": "2025-08-01",
-      "training_labels_end_date": "2025-08-31",
-      "training_last_feature_end_date": "2025-08-24",
-      "feature_names": [
-        "signal_reports_per_7_days",
-        "harm_crashes_per_7_days"
-      ],
-      "lookback_days": [
-        7,
-        14,
-        21
-      ],
-      "forecast_days": 7,
-      "intercept": 0.16946800758070618,
-      "coefficients": {
-        "signal_reports_per_7_days": 0.0054591934543003415,
-        "harm_crashes_per_7_days": 0.08673428411986522
-      },
-      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
-      "target": "injury OR fatal crashes in the next seven days within the selected radius",
-      "postprocessing": "max(raw_prediction, 0); raw predictions also retained",
-      "uncertainty": "No calibrated probabilities or confidence intervals; spatial/temporal samples overlap"
-    },
-    "200": {
-      "design_rank": 3,
-      "training_rows": 65241,
-      "training_window_count": 33,
-      "training_target_mean": 0.23023865360739412,
-      "training_features_start_date": "2025-08-01",
-      "training_labels_end_date": "2025-08-31",
-      "training_last_feature_end_date": "2025-08-24",
-      "feature_names": [
-        "signal_reports_per_7_days",
-        "harm_crashes_per_7_days"
-      ],
-      "lookback_days": [
-        7,
-        14,
-        21
-      ],
-      "forecast_days": 7,
-      "intercept": 0.19937651082909158,
-      "coefficients": {
-        "signal_reports_per_7_days": 0.008773711316913749,
-        "harm_crashes_per_7_days": 0.0994200645237724
-      },
-      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
-      "target": "injury OR fatal crashes in the next seven days within the selected radius",
-      "postprocessing": "max(raw_prediction, 0); raw predictions also retained",
-      "uncertainty": "No calibrated probabilities or confidence intervals; spatial/temporal samples overlap"
-    },
-    "225": {
-      "design_rank": 3,
-      "training_rows": 65241,
-      "training_window_count": 33,
-      "training_target_mean": 0.27962477583114914,
-      "training_features_start_date": "2025-08-01",
-      "training_labels_end_date": "2025-08-31",
-      "training_last_feature_end_date": "2025-08-24",
-      "feature_names": [
-        "signal_reports_per_7_days",
-        "harm_crashes_per_7_days"
-      ],
-      "lookback_days": [
-        7,
-        14,
-        21
-      ],
-      "forecast_days": 7,
-      "intercept": 0.24252251447490672,
-      "coefficients": {
-        "signal_reports_per_7_days": 0.007814960552505926,
-        "harm_crashes_per_7_days": 0.10271808832996895
-      },
-      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
-      "target": "injury OR fatal crashes in the next seven days within the selected radius",
-      "postprocessing": "max(raw_prediction, 0); raw predictions also retained",
-      "uncertainty": "No calibrated probabilities or confidence intervals; spatial/temporal samples overlap"
-    },
-    "250": {
-      "design_rank": 3,
-      "training_rows": 65241,
-      "training_window_count": 33,
-      "training_target_mean": 0.3498566852132861,
-      "training_features_start_date": "2025-08-01",
-      "training_labels_end_date": "2025-08-31",
-      "training_last_feature_end_date": "2025-08-24",
-      "feature_names": [
-        "signal_reports_per_7_days",
-        "harm_crashes_per_7_days"
-      ],
-      "lookback_days": [
-        7,
-        14,
-        21
-      ],
-      "forecast_days": 7,
-      "intercept": 0.29783098203202496,
-      "coefficients": {
-        "signal_reports_per_7_days": 0.006581970902313418,
-        "harm_crashes_per_7_days": 0.12296374361083137
-      },
-      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
-      "target": "injury OR fatal crashes in the next seven days within the selected radius",
-      "postprocessing": "max(raw_prediction, 0); raw predictions also retained",
-      "uncertainty": "No calibrated probabilities or confidence intervals; spatial/temporal samples overlap"
+      "september_actuals": {
+        "signal_reports": 2843,
+        "collisions": 7289,
+        "role": "comparison only; never model inputs"
+      }
     }
   },
-  "candidate_period": "August 2025; fixed across dates, strategies and radii",
-  "coverage_definition": "Unique event IDs in the union of selected circles",
-  "evaluation_kind": "August-fitted OLS; four complete September weeks; exploratory because September previously explored",
+  "training_period": [
+    "2025-08-01",
+    "2025-08-31"
+  ],
+  "forecast_period": [
+    "2025-09-01",
+    "2025-09-30"
+  ],
+  "september_observations_used_for_predictions": false,
+  "models": {
+    "100": {
+      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
+      "targets": [
+        "signal_reports",
+        "collisions",
+        "harm_crashes"
+      ],
+      "feature_names": [
+        "previous_7d_signal_reports_per_day",
+        "previous_7d_collisions_per_day",
+        "previous_7d_harm_crashes_per_day",
+        "forecast_day_is_weekend"
+      ],
+      "models": {
+        "signal_reports": {
+          "intercept": 0.07370897395978357,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.08993036154996831,
+            "previous_7d_collisions_per_day": 0.08038429505350042,
+            "previous_7d_harm_crashes_per_day": -0.04243296796551841,
+            "forecast_day_is_weekend": -0.042265214439083605
+          }
+        },
+        "collisions": {
+          "intercept": 0.024558481259818642,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": -0.00011428299093659607,
+            "previous_7d_collisions_per_day": 0.09239769631121943,
+            "previous_7d_harm_crashes_per_day": -0.012314545591749384,
+            "forecast_day_is_weekend": -0.0016109033645668198
+          }
+        },
+        "harm_crashes": {
+          "intercept": 0.012019146497240722,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.004801927747990611,
+            "previous_7d_collisions_per_day": 0.03944608990595068,
+            "previous_7d_harm_crashes_per_day": 0.009712170615427009,
+            "forecast_day_is_weekend": -0.0010167562968778866
+          }
+        }
+      },
+      "training_rows": 47448,
+      "training_window_count": 24,
+      "design_rank": 5,
+      "training_start_date": "2025-08-01",
+      "training_labels_end_date": "2025-08-31",
+      "lag_days": 7,
+      "forecast_start_date": "2025-09-01",
+      "forecast_end_date": "2025-09-30",
+      "forecast_mode": "all September dates frozen using August only; recursive predicted lags",
+      "september_observations_used": false,
+      "postprocessing": "Daily predictions clipped to zero; harm predictions capped at all-collision predictions; raw estimates retained",
+      "limitations": "Sparse counts, overlapping areas, recursive error accumulation; no calibrated probabilities or confidence intervals"
+    },
+    "125": {
+      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
+      "targets": [
+        "signal_reports",
+        "collisions",
+        "harm_crashes"
+      ],
+      "feature_names": [
+        "previous_7d_signal_reports_per_day",
+        "previous_7d_collisions_per_day",
+        "previous_7d_harm_crashes_per_day",
+        "forecast_day_is_weekend"
+      ],
+      "models": {
+        "signal_reports": {
+          "intercept": 0.07626336357284982,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.09862505259161293,
+            "previous_7d_collisions_per_day": 0.0708145445587946,
+            "previous_7d_harm_crashes_per_day": -0.03985820788788082,
+            "forecast_day_is_weekend": -0.04448901639343161
+          }
+        },
+        "collisions": {
+          "intercept": 0.031035680217653013,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.003438351136016187,
+            "previous_7d_collisions_per_day": 0.10584938173150484,
+            "previous_7d_harm_crashes_per_day": -0.012615452655120344,
+            "forecast_day_is_weekend": -0.0013388510575912185
+          }
+        },
+        "harm_crashes": {
+          "intercept": 0.015249956221164943,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.0032116291371853053,
+            "previous_7d_collisions_per_day": 0.03777489181476834,
+            "previous_7d_harm_crashes_per_day": 0.018610461937555545,
+            "forecast_day_is_weekend": -0.0009783116054159552
+          }
+        }
+      },
+      "training_rows": 47448,
+      "training_window_count": 24,
+      "design_rank": 5,
+      "training_start_date": "2025-08-01",
+      "training_labels_end_date": "2025-08-31",
+      "lag_days": 7,
+      "forecast_start_date": "2025-09-01",
+      "forecast_end_date": "2025-09-30",
+      "forecast_mode": "all September dates frozen using August only; recursive predicted lags",
+      "september_observations_used": false,
+      "postprocessing": "Daily predictions clipped to zero; harm predictions capped at all-collision predictions; raw estimates retained",
+      "limitations": "Sparse counts, overlapping areas, recursive error accumulation; no calibrated probabilities or confidence intervals"
+    },
+    "150": {
+      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
+      "targets": [
+        "signal_reports",
+        "collisions",
+        "harm_crashes"
+      ],
+      "feature_names": [
+        "previous_7d_signal_reports_per_day",
+        "previous_7d_collisions_per_day",
+        "previous_7d_harm_crashes_per_day",
+        "forecast_day_is_weekend"
+      ],
+      "models": {
+        "signal_reports": {
+          "intercept": 0.0806871525581693,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.10285965328253291,
+            "previous_7d_collisions_per_day": 0.08446400904147207,
+            "previous_7d_harm_crashes_per_day": -0.06314534270084325,
+            "forecast_day_is_weekend": -0.04821408105716947
+          }
+        },
+        "collisions": {
+          "intercept": 0.037670943157076774,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.003179092868156286,
+            "previous_7d_collisions_per_day": 0.1252980134906319,
+            "previous_7d_harm_crashes_per_day": -0.0056322053966120465,
+            "forecast_day_is_weekend": -0.002244289420498929
+          }
+        },
+        "harm_crashes": {
+          "intercept": 0.01789719298318761,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.0020183834145720263,
+            "previous_7d_collisions_per_day": 0.041045360587988466,
+            "previous_7d_harm_crashes_per_day": 0.021297713550170003,
+            "forecast_day_is_weekend": -0.0017703678675354585
+          }
+        }
+      },
+      "training_rows": 47448,
+      "training_window_count": 24,
+      "design_rank": 5,
+      "training_start_date": "2025-08-01",
+      "training_labels_end_date": "2025-08-31",
+      "lag_days": 7,
+      "forecast_start_date": "2025-09-01",
+      "forecast_end_date": "2025-09-30",
+      "forecast_mode": "all September dates frozen using August only; recursive predicted lags",
+      "september_observations_used": false,
+      "postprocessing": "Daily predictions clipped to zero; harm predictions capped at all-collision predictions; raw estimates retained",
+      "limitations": "Sparse counts, overlapping areas, recursive error accumulation; no calibrated probabilities or confidence intervals"
+    },
+    "175": {
+      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
+      "targets": [
+        "signal_reports",
+        "collisions",
+        "harm_crashes"
+      ],
+      "feature_names": [
+        "previous_7d_signal_reports_per_day",
+        "previous_7d_collisions_per_day",
+        "previous_7d_harm_crashes_per_day",
+        "forecast_day_is_weekend"
+      ],
+      "models": {
+        "signal_reports": {
+          "intercept": 0.09255731473815351,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.1161072529412793,
+            "previous_7d_collisions_per_day": 0.08769582910371884,
+            "previous_7d_harm_crashes_per_day": -0.030654887275772334,
+            "forecast_day_is_weekend": -0.05772609188106306
+          }
+        },
+        "collisions": {
+          "intercept": 0.0502495604479998,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.012282122163837419,
+            "previous_7d_collisions_per_day": 0.12657255769366246,
+            "previous_7d_harm_crashes_per_day": 0.034219900562156846,
+            "forecast_day_is_weekend": -0.00273026695268843
+          }
+        },
+        "harm_crashes": {
+          "intercept": 0.02386919234678152,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.01442959874960228,
+            "previous_7d_collisions_per_day": 0.03414768576239882,
+            "previous_7d_harm_crashes_per_day": 0.04309708444373508,
+            "forecast_day_is_weekend": -0.002373394028545882
+          }
+        }
+      },
+      "training_rows": 47448,
+      "training_window_count": 24,
+      "design_rank": 5,
+      "training_start_date": "2025-08-01",
+      "training_labels_end_date": "2025-08-31",
+      "lag_days": 7,
+      "forecast_start_date": "2025-09-01",
+      "forecast_end_date": "2025-09-30",
+      "forecast_mode": "all September dates frozen using August only; recursive predicted lags",
+      "september_observations_used": false,
+      "postprocessing": "Daily predictions clipped to zero; harm predictions capped at all-collision predictions; raw estimates retained",
+      "limitations": "Sparse counts, overlapping areas, recursive error accumulation; no calibrated probabilities or confidence intervals"
+    },
+    "200": {
+      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
+      "targets": [
+        "signal_reports",
+        "collisions",
+        "harm_crashes"
+      ],
+      "feature_names": [
+        "previous_7d_signal_reports_per_day",
+        "previous_7d_collisions_per_day",
+        "previous_7d_harm_crashes_per_day",
+        "forecast_day_is_weekend"
+      ],
+      "models": {
+        "signal_reports": {
+          "intercept": 0.09699841728488018,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.12256942941701693,
+            "previous_7d_collisions_per_day": 0.10546352764152639,
+            "previous_7d_harm_crashes_per_day": -0.006173712523965973,
+            "forecast_day_is_weekend": -0.06272586601913309
+          }
+        },
+        "collisions": {
+          "intercept": 0.060251188914731586,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.013326653567921197,
+            "previous_7d_collisions_per_day": 0.1607384759611748,
+            "previous_7d_harm_crashes_per_day": 0.012574247529036638,
+            "forecast_day_is_weekend": -0.004877979840886851
+          }
+        },
+        "harm_crashes": {
+          "intercept": 0.02820956600364097,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.01521034774754772,
+            "previous_7d_collisions_per_day": 0.04596232125850565,
+            "previous_7d_harm_crashes_per_day": 0.03608256116014985,
+            "forecast_day_is_weekend": -0.0030525190645000477
+          }
+        }
+      },
+      "training_rows": 47448,
+      "training_window_count": 24,
+      "design_rank": 5,
+      "training_start_date": "2025-08-01",
+      "training_labels_end_date": "2025-08-31",
+      "lag_days": 7,
+      "forecast_start_date": "2025-09-01",
+      "forecast_end_date": "2025-09-30",
+      "forecast_mode": "all September dates frozen using August only; recursive predicted lags",
+      "september_observations_used": false,
+      "postprocessing": "Daily predictions clipped to zero; harm predictions capped at all-collision predictions; raw estimates retained",
+      "limitations": "Sparse counts, overlapping areas, recursive error accumulation; no calibrated probabilities or confidence intervals"
+    },
+    "225": {
+      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
+      "targets": [
+        "signal_reports",
+        "collisions",
+        "harm_crashes"
+      ],
+      "feature_names": [
+        "previous_7d_signal_reports_per_day",
+        "previous_7d_collisions_per_day",
+        "previous_7d_harm_crashes_per_day",
+        "forecast_day_is_weekend"
+      ],
+      "models": {
+        "signal_reports": {
+          "intercept": 0.10379169771593481,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.11805324015620175,
+            "previous_7d_collisions_per_day": 0.09881325831044847,
+            "previous_7d_harm_crashes_per_day": 0.03825290062043226,
+            "forecast_day_is_weekend": -0.06715233311239448
+          }
+        },
+        "collisions": {
+          "intercept": 0.07051145998592744,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.01878887088955719,
+            "previous_7d_collisions_per_day": 0.19822532688172473,
+            "previous_7d_harm_crashes_per_day": -0.01137091836303604,
+            "forecast_day_is_weekend": -0.006027617263543741
+          }
+        },
+        "harm_crashes": {
+          "intercept": 0.03262829506811053,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.020484598016759916,
+            "previous_7d_collisions_per_day": 0.07397295195391762,
+            "previous_7d_harm_crashes_per_day": 0.013496014505874891,
+            "forecast_day_is_weekend": -0.0037580616163632972
+          }
+        }
+      },
+      "training_rows": 47448,
+      "training_window_count": 24,
+      "design_rank": 5,
+      "training_start_date": "2025-08-01",
+      "training_labels_end_date": "2025-08-31",
+      "lag_days": 7,
+      "forecast_start_date": "2025-09-01",
+      "forecast_end_date": "2025-09-30",
+      "forecast_mode": "all September dates frozen using August only; recursive predicted lags",
+      "september_observations_used": false,
+      "postprocessing": "Daily predictions clipped to zero; harm predictions capped at all-collision predictions; raw estimates retained",
+      "limitations": "Sparse counts, overlapping areas, recursive error accumulation; no calibrated probabilities or confidence intervals"
+    },
+    "250": {
+      "estimator": "ordinary least squares with intercept (numpy.linalg.lstsq)",
+      "targets": [
+        "signal_reports",
+        "collisions",
+        "harm_crashes"
+      ],
+      "feature_names": [
+        "previous_7d_signal_reports_per_day",
+        "previous_7d_collisions_per_day",
+        "previous_7d_harm_crashes_per_day",
+        "forecast_day_is_weekend"
+      ],
+      "models": {
+        "signal_reports": {
+          "intercept": 0.1157235965066851,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.1357333511085463,
+            "previous_7d_collisions_per_day": 0.09667610022056342,
+            "previous_7d_harm_crashes_per_day": 0.03418392463754685,
+            "forecast_day_is_weekend": -0.07747176905835383
+          }
+        },
+        "collisions": {
+          "intercept": 0.08552132932306089,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.016125198408769248,
+            "previous_7d_collisions_per_day": 0.22744375862552044,
+            "previous_7d_harm_crashes_per_day": -0.014852153662726776,
+            "forecast_day_is_weekend": -0.007178605212957538
+          }
+        },
+        "harm_crashes": {
+          "intercept": 0.04024328089320552,
+          "coefficients": {
+            "previous_7d_signal_reports_per_day": 0.017096544162645895,
+            "previous_7d_collisions_per_day": 0.08773515418613662,
+            "previous_7d_harm_crashes_per_day": 0.011511133788274144,
+            "forecast_day_is_weekend": -0.005233577189550285
+          }
+        }
+      },
+      "training_rows": 47448,
+      "training_window_count": 24,
+      "design_rank": 5,
+      "training_start_date": "2025-08-01",
+      "training_labels_end_date": "2025-08-31",
+      "lag_days": 7,
+      "forecast_start_date": "2025-09-01",
+      "forecast_end_date": "2025-09-30",
+      "forecast_mode": "all September dates frozen using August only; recursive predicted lags",
+      "september_observations_used": false,
+      "postprocessing": "Daily predictions clipped to zero; harm predictions capped at all-collision predictions; raw estimates retained",
+      "limitations": "Sparse counts, overlapping areas, recursive error accumulation; no calibrated probabilities or confidence intervals"
+    }
+  },
+  "coverage_definition": "Unique original event IDs in union of selected circles",
+  "evaluation_kind": "Full September, August-only forecast; exploratory because September previously explored",
   "rows": {
     "targets_scored.csv": 41517,
     "selected_targets.csv": 3675,
-    "evaluation.csv": 252,
-    "model_metrics.csv": 140,
-    "model_predictions.csv": 55356
+    "evaluation.csv": 63,
+    "model_metrics.csv": 84,
+    "model_predictions.csv": 13839
   }
 }

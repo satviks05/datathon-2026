@@ -30,5 +30,13 @@ coverage/
 !data/processed/evaluation.csv
 !data/processed/analysis_manifest.json
 !data/processed/model_metrics.csv
-# Full per-area weekly predictions are reproducible but remain generated locally.
+# August-only training inputs and separately held-out actuals.
+!data/processed/august_train/
+!data/processed/august_train/*.csv
+!data/processed/september_actuals/
+!data/processed/september_actuals/*.csv
+!data/processed/split_manifest.json
+!data/processed/september_forecasts.csv
+!data/processed/forecast_manifest.json
+# Per-area actual/prediction audits and optional daily forecasts remain generated locally.
 tmp/

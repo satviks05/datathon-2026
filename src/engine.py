@@ -1,7 +1,7 @@
-"""Reusable analysis engine: spatial memberships once, date/radius queries on demand."""
+"""Join frozen August-only September forecasts to separately observed events."""
 
-from functools import lru_cache
 from collections import Counter
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -9,13 +9,15 @@ import pandas as pd
 from . import config
 from .loaders import load_events
 from .ranking import score_candidates, select_spaced
-from .regression import SevenDayRegression
+from .regression import AugustOnlyRegression, OUTCOMES, regression_metrics
 from .spatial import DISTANCE_TOLERANCE_M, RadiusIndex, build_candidates
 
 CONTEXT_COLUMNS = ["persons_injured", "persons_killed", "cyclist_injured"]
-FORECAST_COLUMNS = ["raw_prediction", "predicted_harm_crashes_next_7d",
-                    "signal_reports_per_7_days", "harm_crashes_per_7_days",
-                    "forecast_start_date", "forecast_end_date"]
+FORECAST_COLUMNS = ([f"predicted_{name}" for name in OUTCOMES]
+                    + [f"raw_predicted_{name}" for name in OUTCOMES]
+                    + [f"august_rate_{name}" for name in OUTCOMES]
+                    + [f"last_august_week_rate_{name}" for name in OUTCOMES]
+                    + ["forecast_start_date", "forecast_end_date", "training_end_date"])
 
 
 def date_window(start_date, end_date):
@@ -45,15 +47,12 @@ def inspection_for(descriptor):
         return "Inspect the reported signal-control equipment."
     if "veh" in value and ("signal" in value or "lamp" in value):
         return "Inspect the reported vehicle-signal equipment."
-    if not descriptor:
-        return "Review the historically reported signal area; no signal reports in the selected dates."
-    return f"Inspect the reported component; reported descriptor: {descriptor}."
+    return f"Inspect the reported component; reported descriptor: {descriptor}." if descriptor else "Review the historically reported signal area."
 
 
 class AnalysisEngine:
     def __init__(self, data_dir, version):
-        self.data_dir = data_dir
-        self.version = version
+        self.data_dir, self.version = data_dir, version
         self.reports, self.collisions = load_events(data_dir)
         self.candidates = build_candidates(self.reports)
         self.target_lookup = dict(zip(self.candidates["target_id"], self.candidates.index))
@@ -61,22 +60,25 @@ class AnalysisEngine:
         self.crash_times = self.collisions["occurred_at"].to_numpy()
         self.harm = self.collisions["has_harm"].to_numpy()
         self.descriptors = self.reports["descriptor"].fillna("").astype(str).to_numpy()
-        self.injury_context = self.collisions[[
-            "number_of_persons_injured", "number_of_persons_killed", "number_of_cyclist_injured",
-        ]].to_numpy(dtype=np.int64)
+        self.injury_context = self.collisions[["number_of_persons_injured", "number_of_persons_killed", "number_of_cyclist_injured"]].to_numpy(dtype=np.int64)
         self.report_neighbors = self._neighborhoods(self.reports)
         self.crash_neighbors = self._neighborhoods(self.collisions)
-        spacing_index = RadiusIndex(self.candidates[["latitude", "longitude"]].to_numpy())
+        index = RadiusIndex(self.candidates[["latitude", "longitude"]].to_numpy())
         self.blocked_neighbors = []
         for row in self.candidates.itertuples():
-            indices, distances = spacing_index.query(row.latitude, row.longitude, config.SPACING_M)
-            self.blocked_neighbors.append(indices[distances < config.SPACING_M - DISTANCE_TOLERANCE_M])
-        self.regression = SevenDayRegression(self)
+            ids, distances = index.query(row.latitude, row.longitude, config.SPACING_M)
+            self.blocked_neighbors.append(ids[distances < config.SPACING_M - DISTANCE_TOLERANCE_M])
+        # A hard boundary: the model receives ONLY August rows. Its constructor
+        # rejects September rows, and never receives the evaluation engine.
+        august_reports = self.reports.loc[self.reports.created_date.lt(config.FORECAST_START)].copy().reset_index(drop=True)
+        august_crashes = self.collisions.loc[self.collisions.occurred_at.lt(config.FORECAST_START)].copy().reset_index(drop=True)
+        self.regression = AugustOnlyRegression(august_reports, august_crashes, self.candidates)
+        self.has_september_actuals = bool(self.reports.created_date.ge(config.FORECAST_START).any()
+                                         or self.collisions.occurred_at.ge(config.FORECAST_START).any())
 
     def _neighborhoods(self, events):
         index = RadiusIndex(events[["latitude", "longitude"]].to_numpy())
-        return [index.query(row.latitude, row.longitude, max(config.RADII))
-                for row in self.candidates.itertuples()]
+        return [index.query(row.latitude, row.longitude, max(config.RADII)) for row in self.candidates.itertuples()]
 
     def _time_masks(self, start_date, end_date):
         start, stop = date_window(start_date, end_date)
@@ -86,147 +88,149 @@ class AnalysisEngine:
 
     @staticmethod
     def _member_indices(neighbors, index, radius_m, time_mask):
-        indices, distances = neighbors[index]
-        keep = (distances <= radius_m + DISTANCE_TOLERANCE_M) & time_mask[indices]
-        return indices[keep]
+        ids, distances = neighbors[index]
+        return ids[(distances <= radius_m + DISTANCE_TOLERANCE_M) & time_mask[ids]]
 
     @lru_cache(maxsize=16)
     def features(self, start_date, end_date, radius_m):
         report_mask, crash_mask = self._time_masks(start_date, end_date)
-        features = self.candidates.copy()
-        report_counts, crash_counts, descriptors, context = [], [], [], []
+        frame = self.candidates.copy()
+        reports_count, crashes_count, harm_count, descriptors, context = [], [], [], [], []
         for index in self.candidates.index:
             reports = self._member_indices(self.report_neighbors, index, radius_m, report_mask)
             crashes = self._member_indices(self.crash_neighbors, index, radius_m, crash_mask)
-            report_counts.append(len(reports))
-            crash_counts.append(int(self.harm[crashes].sum()))
+            reports_count.append(len(reports))
+            crashes_count.append(len(crashes))
+            harm_count.append(int(self.harm[crashes].sum()))
             counts = Counter(value for value in self.descriptors[reports] if value)
-            top = min(counts, key=lambda value: (-counts[value], value)) if counts else ""
-            descriptors.append(top)
+            descriptors.append(min(counts, key=lambda value: (-counts[value], value)) if counts else "")
             context.append(self.injury_context[crashes].sum(axis=0))
-        features["signal_report_count"] = np.asarray(report_counts, dtype=np.int64)
-        features["harm_crash_count"] = np.asarray(crash_counts, dtype=np.int64)
-        features["top_descriptor"] = descriptors
-        features["suggested_inspection"] = [inspection_for(value) for value in descriptors]
+        frame["signal_report_count"] = np.asarray(reports_count, dtype=np.int64)
+        frame["collision_count"] = np.asarray(crashes_count, dtype=np.int64)
+        frame["harm_crash_count"] = np.asarray(harm_count, dtype=np.int64)
+        frame["top_descriptor"] = descriptors
+        frame["suggested_inspection"] = [inspection_for(value) for value in descriptors]
         for i, column in enumerate(CONTEXT_COLUMNS):
-            features[column] = np.asarray(context, dtype=np.int64).reshape(-1, 3)[:, i]
-        features["radius_m"] = radius_m
-        features["start_date"] = start_date
-        features["end_date"] = end_date
-        return features
+            frame[column] = np.asarray(context, dtype=np.int64).reshape(-1, 3)[:, i]
+        frame["radius_m"], frame["start_date"], frame["end_date"] = radius_m, start_date, end_date
+        return frame
 
     def scored_and_selected(self, start_date, end_date, radius_m, strategy, budget):
-        features = self.features(start_date, end_date, radius_m).copy()
-        available = pd.Timestamp(end_date) >= pd.Timestamp(config.MODEL_TRAIN_END)
-        if available and not features.empty:
-            raw, x = self.regression.predict(features, radius_m)
-            features["raw_prediction"] = raw
-            features["predicted_harm_crashes_next_7d"] = np.maximum(raw, 0)
-            features["signal_reports_per_7_days"] = x[:, 0]
-            features["harm_crashes_per_7_days"] = x[:, 1]
+        features = self.features(config.MIN_DATE, config.MODEL_TRAIN_END, radius_m).copy()
+        available = start_date >= config.FORECAST_START
+        if available:
+            forecasts = self.regression.aggregate(start_date, end_date, radius_m)
+            for column in FORECAST_COLUMNS:
+                features[column] = forecasts[column].to_numpy()
         else:
-            for column in FORECAST_COLUMNS[:4]:
+            for column in FORECAST_COLUMNS:
                 features[column] = np.nan
-        features["forecast_start_date"] = (pd.Timestamp(end_date) + pd.Timedelta(days=1)).date().isoformat()
-        features["forecast_end_date"] = (pd.Timestamp(end_date) + pd.Timedelta(days=config.FORECAST_DAYS)).date().isoformat()
+        features["start_date"], features["end_date"] = start_date, end_date
         scored = score_candidates(features, strategy)
-        # Empty date windows should not manufacture a review shortlist.
-        if (strategy == "linear_regression" and not available) or features[["signal_report_count", "harm_crash_count"]].to_numpy().sum() == 0:
+        if strategy == "linear_regression" and not available:
             selected = scored.iloc[:0].copy()
             selected["selected_rank"] = pd.Series(dtype="int64")
             selected["budget"] = pd.Series(dtype="int64")
         else:
             selected = select_spaced(scored, self.blocked_neighbors, budget)
-        return (scored[config.SCORED_COLUMNS + CONTEXT_COLUMNS + FORECAST_COLUMNS],
-                selected[config.SELECTED_COLUMNS + CONTEXT_COLUMNS + FORECAST_COLUMNS])
+        columns = config.SCORED_COLUMNS + ["collision_count"] + CONTEXT_COLUMNS + FORECAST_COLUMNS
+        return scored[columns], selected[columns + ["selected_rank", "budget"]]
 
-    def coverage(self, selected, radius_m, start_date, end_date):
+    def _union_masks(self, selected, radius_m, start_date, end_date):
         report_mask, crash_mask = self._time_masks(start_date, end_date)
-        report_union = np.zeros(len(self.reports), dtype=bool)
-        crash_union = np.zeros(len(self.collisions), dtype=bool)
+        report_union, crash_union = np.zeros(len(self.reports), dtype=bool), np.zeros(len(self.collisions), dtype=bool)
         for target_id in selected["target_id"]:
             index = self.target_lookup[target_id]
             report_union[self._member_indices(self.report_neighbors, index, radius_m, report_mask)] = True
             crash_union[self._member_indices(self.crash_neighbors, index, radius_m, crash_mask)] = True
-        return int(report_union.sum()), int((crash_union & self.harm).sum())
+        return report_union, crash_union
+
+    def coverage(self, selected, radius_m, start_date, end_date):
+        reports, crashes = self._union_masks(selected, radius_m, start_date, end_date)
+        return int(reports.sum()), int((crashes & self.harm).sum())
+
+    def comparison(self, start_date, end_date, radius_m, budget):
+        _, crash_mask = self._time_masks(start_date, end_date)
+        available = start_date >= config.FORECAST_START and self.has_september_actuals
+        denominator = int((crash_mask & self.harm).sum()) if available else None
+        rows = []
+        for strategy in config.STRATEGIES:
+            _, selected = self.scored_and_selected(start_date, end_date, radius_m, strategy, budget)
+            history_reports, _ = self.coverage(selected, radius_m, config.MIN_DATE, config.MODEL_TRAIN_END)
+            reports, crashes = self._union_masks(selected, radius_m, start_date, end_date)
+            harm = int((crashes & self.harm).sum()) if available else None
+            rows.append(dict(strategy=strategy, radius_m=radius_m, budget=budget, selected_count=len(selected),
+                             history_signal_reports_covered=history_reports,
+                             future_signal_reports_covered=int(reports.sum()) if available else None,
+                             future_collisions_covered=int(crashes.sum()) if available else None,
+                             future_harm_crashes_covered=harm, future_harm_crashes_total=denominator,
+                             future_harm_coverage_pct=(100 * harm / denominator if denominator else 0.0) if available else None,
+                             start_date=start_date, end_date=end_date, forecast_start_date=start_date, forecast_end_date=end_date))
+        return pd.DataFrame(rows)
 
     @lru_cache(maxsize=21)
     def historical_evaluation(self, radius_m, budget):
+        result = self.comparison(config.FORECAST_START, config.FORECAST_END, radius_m, budget)
+        # Compatibility fields describe the full September period ONLY.
+        result["september_harm_crashes_covered"] = result["future_harm_crashes_covered"]
+        result["september_harm_coverage_pct"] = result["future_harm_coverage_pct"]
+        result["september_harm_crashes_total"] = result["future_harm_crashes_total"]
+        result["august_signal_reports_covered"] = result["history_signal_reports_covered"]
+        return result
+
+    def area_comparison(self, start_date, end_date, radius_m):
+        predictions = self.regression.aggregate(start_date, end_date, radius_m)
+        actual = self.features(start_date, end_date, radius_m)
+        columns = ("signal_report_count", "collision_count", "harm_crash_count")
+        for outcome, column in zip(OUTCOMES, columns):
+            predictions[f"actual_{outcome}"] = actual[column].to_numpy() if self.has_september_actuals else np.nan
+            predictions[f"residual_{outcome}"] = predictions[f"actual_{outcome}"] - predictions[f"predicted_{outcome}"]
+        return predictions
+
+    @lru_cache(maxsize=16)
+    def model_metrics(self, start_date, end_date, radius_m):
+        if not self.has_september_actuals:
+            return pd.DataFrame()
+        frame = self.area_comparison(start_date, end_date, radius_m)
         rows = []
-        for end_date in ("2025-08-31", "2025-09-07", "2025-09-14", "2025-09-21"):
-            end = pd.Timestamp(end_date)
-            start_date = (end - pd.Timedelta(days=6)).date().isoformat()
-            future_start = (end + pd.Timedelta(days=1)).date().isoformat()
-            future_end = (end + pd.Timedelta(days=config.FORECAST_DAYS)).date().isoformat()
-            _, future_mask = self._time_masks(future_start, future_end)
-            denominator = int((future_mask & self.harm).sum())
-            for strategy in config.STRATEGIES:
-                _, selected = self.scored_and_selected(start_date, end_date, radius_m, strategy, budget)
-                history_reports, _ = self.coverage(selected, radius_m, start_date, end_date)
-                _, future_harm = self.coverage(selected, radius_m, future_start, future_end)
-                rows.append(dict(
-                    strategy=strategy, radius_m=radius_m, budget=budget, selected_count=len(selected),
-                    future_harm_crashes_covered=future_harm,
-                    future_harm_coverage_pct=100 * future_harm / denominator if denominator else 0.0,
-                    history_signal_reports_covered=history_reports, future_harm_crashes_total=denominator,
-                    start_date=start_date, end_date=end_date,
-                    forecast_start_date=future_start, forecast_end_date=future_end,
-                ))
+        for outcome in OUTCOMES:
+            for estimator in ("linear_regression", "august_rate", "last_august_week_rate", "always_zero"):
+                column = f"predicted_{outcome}" if estimator == "linear_regression" else f"{estimator}_{outcome}"
+                predicted = np.zeros(len(frame)) if estimator == "always_zero" else frame[column].to_numpy()
+                rows.append(dict(radius_m=radius_m, outcome=outcome, estimator=estimator,
+                                 start_date=start_date, end_date=end_date, test_rows=len(frame),
+                                 **regression_metrics(frame[f"actual_{outcome}"].to_numpy(), predicted)))
         return pd.DataFrame(rows)
 
     @lru_cache(maxsize=16)
     def analysis(self, start_date, end_date, radius_m, strategy, budget):
         report_mask, crash_mask = self._time_masks(start_date, end_date)
-        future_start = (pd.Timestamp(end_date) + pd.Timedelta(days=1)).date().isoformat()
-        future_end = (pd.Timestamp(end_date) + pd.Timedelta(days=config.FORECAST_DAYS)).date().isoformat()
-        model_available = pd.Timestamp(end_date) >= pd.Timestamp(config.MODEL_TRAIN_END)
-        outcomes_available = model_available and future_end <= config.MAX_DATE
-        denominator = None
-        if outcomes_available:
-            _, future_mask = self._time_masks(future_start, future_end)
-            denominator = int((future_mask & self.harm).sum())
-        comparisons, current_scored, current_selected = [], None, None
-        for option in config.STRATEGIES:
-            scored, selected = self.scored_and_selected(start_date, end_date, radius_m, option, budget)
-            reports, _ = self.coverage(selected, radius_m, start_date, end_date)
-            crashes = self.coverage(selected, radius_m, future_start, future_end)[1] if outcomes_available else None
-            comparisons.append(dict(
-                strategy=option, radius_m=radius_m, budget=budget, selected_count=len(selected),
-                history_signal_reports_covered=reports, future_harm_crashes_covered=crashes,
-                future_harm_crashes_total=denominator,
-                future_harm_coverage_pct=(100 * crashes / denominator if denominator else 0.0) if outcomes_available else None,
-                start_date=start_date, end_date=end_date,
-                forecast_start_date=future_start, forecast_end_date=future_end,
-            ))
-            if option == strategy:
-                current_scored, current_selected = scored, selected
-        return {
-            "targets_scored": current_scored.reset_index(drop=True),
-            "selected_targets": current_selected.reset_index(drop=True),
-            "comparison": pd.DataFrame(comparisons),
-            "reports": self.reports.loc[report_mask].copy(),
-            "collisions": self.collisions.loc[crash_mask].copy(),
-            "evaluation": self.historical_evaluation(radius_m, budget).copy(),
-            "model": self.regression.description(radius_m) if model_available else None,
-            "metadata": dict(
-                start_date=start_date, end_date=end_date, radius_m=radius_m,
-                strategy=strategy, budget=budget, input_version=self.version,
-                method_version=config.METHOD_VERSION, date_granularity="day",
-                timezone="America/New_York (source local-clock assumption)",
-                signal_reports_total=int(report_mask.sum()), harm_crashes_total=int((crash_mask & self.harm).sum()),
-                candidate_count=len(self.candidates), candidate_period="August 2025 (fixed)",
-                analysis_kind="seven-day count forecast with retrospective evidence",
-                forecast_start_date=future_start, forecast_end_date=future_end,
-                model_available=model_available, outcomes_available=outcomes_available,
-                model_note=("Fitted on August-complete labels; coefficients frozen throughout September." if model_available else
-                            "Model unavailable before August 31: avoid using future training labels. Observed event layers remain available."),
-                history_days=(pd.Timestamp(end_date) - pd.Timestamp(start_date)).days + 1,
-                training_lookback_days=list(config.TRAIN_LOOKBACK_DAYS),
-                history_note="Counts normalized to seven-day equivalents; model trained on 7/14/21-day lookbacks. Other history lengths are extrapolations.",
-                comparison_kind="unique harm crashes in the next seven days, when fully observed",
-                evaluation_note="Separate fixed weekly September backtest; four complete nonoverlapping outcome weeks. September was previously explored.",
+        scored, selected = self.scored_and_selected(start_date, end_date, radius_m, strategy, budget)
+        available = start_date >= config.FORECAST_START
+        return dict(
+            targets_scored=scored.reset_index(drop=True), selected_targets=selected.reset_index(drop=True),
+            reports=self.reports.loc[report_mask].copy(), collisions=self.collisions.loc[crash_mask].copy(),
+            area_comparison=self.area_comparison(start_date, end_date, radius_m) if available else pd.DataFrame(),
+            comparison=self.comparison(start_date, end_date, radius_m, budget),
+            evaluation=self.historical_evaluation(radius_m, budget).copy(),
+            model=self.regression.description(radius_m),
+            metadata=dict(
+                start_date=start_date, end_date=end_date, radius_m=radius_m, strategy=strategy, budget=budget,
+                input_version=self.version, method_version=config.METHOD_VERSION,
+                date_granularity="day", timezone="America/New_York local-clock assumption",
+                signal_reports_total=int(report_mask.sum()), collisions_total=int(crash_mask.sum()),
+                harm_crashes_total=int((crash_mask & self.harm).sum()), candidate_count=len(self.candidates),
+                candidate_period="August 2025 (fixed)", model_available=available,
+                outcomes_available=available and self.has_september_actuals,
+                training_start_date=config.MIN_DATE, training_end_date=config.MODEL_TRAIN_END,
+                forecast_start_date=start_date if available else None, forecast_end_date=end_date if available else None,
+                september_observations_used_for_predictions=False,
+                model_note="All September forecasts frozen from August only. Select September dates for predictions; August dates display observations only.",
+                analysis_kind="August-only forecast versus separately observed September outcomes",
+                comparison_kind="Unique observed events within selected forecast-priority circles",
+                evaluation_note="Full September comparison; previously explored, so exploratory evaluation. No September input or refitting.",
             ),
-        }
+        )
 
     def evidence(self, target_id, radius_m, start_date, end_date):
         if target_id not in self.target_lookup:
@@ -234,13 +238,11 @@ class AnalysisEngine:
         index = self.target_lookup[target_id]
         report_mask, crash_mask = self._time_masks(start_date, end_date)
         result = {}
-        for name, table, neighbors, mask in (
-            ("reports", self.reports, self.report_neighbors, report_mask),
-            ("collisions", self.collisions, self.crash_neighbors, crash_mask),
-        ):
-            indices, distances = neighbors[index]
-            keep = (distances <= radius_m + DISTANCE_TOLERANCE_M) & mask[indices]
-            records = table.iloc[indices[keep]].copy()
+        for name, table, neighbors, mask in (("reports", self.reports, self.report_neighbors, report_mask),
+                                             ("collisions", self.collisions, self.crash_neighbors, crash_mask)):
+            ids, distances = neighbors[index]
+            keep = (distances <= radius_m + DISTANCE_TOLERANCE_M) & mask[ids]
+            records = table.iloc[ids[keep]].copy()
             records["distance_m"] = distances[keep]
             result[name] = records.reset_index(drop=True)
         return result

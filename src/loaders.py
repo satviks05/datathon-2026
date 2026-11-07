@@ -23,7 +23,7 @@ def input_version(data_dir):
         "METHOD_VERSION", "RADII", "BUDGETS", "STRATEGIES", "GRID_M",
         "SPACING_M", "EARTH_RADIUS_M", "GRID_ORIGIN_LAT", "GRID_ORIGIN_LON",
         "MIN_DATE", "MAX_DATE",
-        "MODEL_TRAIN_END", "FORECAST_DAYS", "TRAIN_LOOKBACK_DAYS",
+        "MODEL_TRAIN_END", "FORECAST_DAYS", "LAG_DAYS", "FORECAST_START", "FORECAST_END",
     )}
     settings["runtime"] = {"python": platform.python_version(), "pandas": pd.__version__, "numpy": np.__version__}
     digest.update(json.dumps(settings, sort_keys=True).encode())
@@ -61,7 +61,8 @@ def load_events(data_dir):
     if not reports["complaint_type"].eq("Traffic Signal Condition").all():
         raise ValueError("Only Traffic Signal Condition reports are supported")
     reports["created_date"] = pd.to_datetime(reports["created_date"], errors="raise")
-    reports["closed_date"] = pd.to_datetime(reports["closed_date"], errors="raise")
+    reports["closed_date"] = (pd.to_datetime(reports["closed_date"], errors="raise")
+                              if "closed_date" in reports else pd.NaT)
     crashes["occurred_at"] = pd.to_datetime(
         crashes["crash_date"].astype(str).str[:10] + " " + crashes["crash_time"].astype(str),
         format="%Y-%m-%d %H:%M", errors="raise",

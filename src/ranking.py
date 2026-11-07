@@ -13,7 +13,7 @@ def score_candidates(features, strategy):
     crash_percentile = scored["harm_crash_count"].rank(method="average", pct=True)
     scored["strategy"] = strategy
     if strategy == "linear_regression":
-        scored["score"] = scored["predicted_harm_crashes_next_7d"]
+        scored["score"] = scored["predicted_harm_crashes"]
     else:
         scored["score"] = {"crash_first": crash_percentile,
                            "complaint_first": report_percentile}[strategy]
