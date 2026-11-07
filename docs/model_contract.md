@@ -48,7 +48,7 @@ SYNTHETIC-UI-EXAMPLE,cell_1170_9010,40.699,-73.991,zero,2025-08-25,2025-09-01,20
 ## Integration requests (outside backend ownership)
 
 - UI owner: replace radius/old ranking controls with forecast week, model, and count measure; read `predictions.csv`, `metrics.csv`, and metadata. Do not use `selected_targets.csv` / `evaluation.csv`, recalculate competing metrics, or silently substitute old results.
-- Shared-file owner: add narrow `.gitignore` exceptions for only `features.csv`, `predictions.csv`, `metrics.csv`, and `run_metadata.json` under `data/processed/` if the team elects to track demo outputs. Current policy ignores them; this backend does not edit `.gitignore` or force-add artifacts.
+- Shared-file owner: add narrow `.gitignore` exceptions for only `features.csv`, `predictions.csv`, `metrics.csv`, and `run_metadata.json` under `data/processed/` for discoverability. The four stable, backend-owned demo exports are explicitly committed; `.gitignore` is unchanged and no unrelated generated artifacts are added. Future changes to these tracked files are already visible to Git.
 - Methodology owner: update README/setup/presentation to the new command and the actual exploratory results. No exposure, causality, statistical significance, or guaranteed complaint benefit claim.
 
 ## Fixed design
@@ -58,3 +58,41 @@ Longitude-first pyproj transforms with `always_xy=True`: WGS84 to EPSG:32618. Ce
 Training forecast starts: August 8, 15, 22. Evaluation forecast starts: September 1, 8, 15, 22. Each has a preceding seven-day feature interval and subsequent seven-day target interval. The trained pipelines apply log1p, StandardScaler, and PoissonRegressor(alpha=1.0, max_iter=1000), with default intercept. Fit only the three training windows, then freeze the scaler and fitted model. Later September observations may enter later feature windows; this is weekly updated historical forecasting.
 
 All three models use the identical evaluation rows. Rank per model/week by expected count descending, then string area ID ascending, with no spatial spacing rule. Coverage denominators include all mapped citywide target-week collisions, including cells outside the frozen eligible universe. September 29–30 are not evaluated.
+
+## Verified real-data results
+
+The frozen union contains **1,180 cells**: 215 early-history zero-collision cells, 629 one-collision cells, and 336 two-plus cells. Outputs contain 8,260 feature rows (3,540 training), 4,720 prediction rows, and 24 metric rows. Both Poisson fits converged with the specified settings, in 3 and 5 iterations respectively.
+
+| Model | Pooled MAE | Top-50 collisions | Top-50 citywide coverage |
+| --- | ---: | ---: | ---: |
+| persistence | 0.937076 | 375 | 5.510654% |
+| collision_only | 0.845225 | 375 | 5.510654% |
+| combined | 0.841684 | 357 | 5.246143% |
+
+Combined lowers MAE by **0.003541 (0.41894%)** versus collision-only and **0.095392 (10.17978%)** versus persistence. Its top-50 coverage is **0.26451 percentage points worse** than both references. This is a small MAE gain with a worse concentration ranking; complaints do not improve every outcome. No tuning or September model selection was performed.
+
+| Forecast start | persistence MAE | collision_only MAE | combined MAE | Citywide collisions | Eligible collisions |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 2025-09-01 | 0.885593 | 0.852143 | 0.849489 | 1,744 | 1,090 |
+| 2025-09-08 | 0.952542 | 0.844531 | 0.842308 | 1,673 | 1,070 |
+| 2025-09-15 | 0.973729 | 0.874180 | 0.868837 | 1,747 | 1,147 |
+| 2025-09-22 | 0.936441 | 0.810046 | 0.806102 | 1,641 | 1,036 |
+
+The eligible universe contains **4,343 of 6,805** mapped evaluation collisions (**63.82072%**). The other 2,462 remain in citywide coverage denominators. Weekly coverage is not averaged to obtain pooled coverage. Activity-band MAE is exported for every model: combined is 0.796122 (zero), 0.802232 (one), and 0.944693 (two_plus), versus collision-only 0.798882, 0.806058, and 0.948201.
+
+Source audit: 34,676 raw 311 rows, of which 6,534 are signal reports; 28,142 other-category reports are outside scope. Coordinate filtering excludes 415 signal reports, leaving 6,119. Of 14,526 raw collisions, 119 lack coordinate pairs and 341 have zero pairs, leaving 14,066. Category exclusions and unusable coordinates are separate limitations.
+
+## Manual event-ID audit
+
+The following were checked directly against source CSV IDs, independently recomputing projected cell membership and half-open timestamp masks. `tests/backend/test_forecast_real.py` preserves these checks:
+
+| Cell / forecast start | Prior complaint IDs | Prior collision IDs | Target collision IDs | Early band |
+| --- | --- | --- | --- | --- |
+| `cell_1165_8999` / 2025-08-15 | 65845573 | 4835362 | 4835338, 4836748 | one |
+| `cell_1166_8999` / 2025-09-08 | 66069300 | 4839808, 4841555 | 4841465, 4841917 | zero |
+
+The second cell legitimately acquires collisions later despite its fixed zero early-history band. Synthetic tests additionally cover exact midnight/end boundaries, zero-event rows, complaints-only and collisions-only eligibility, exclusion of later-only cells, training-only scalers, weekly feature updates, convergence errors, deterministic top-50 ties, citywide denominators, pooled weighting, absent bands, zero denominators, unchanged inputs, mixed/invalid metric rows, repeatability, and preservation of existing outputs on fit failure.
+
+Exports are staged only after fitting/validation succeed, with metadata replaced last. A filesystem cannot atomically replace four ordinary files as a unit: consumers must validate both run IDs and the metadata's CSV SHA-256s to reject an interrupted or mixed publication. No model binaries are required by the UI.
+
+Validation: **37 backend tests** (17 new weekly-forecast tests, 20 legacy regression tests) and **4 existing UI tests** passed. The UI tests concern the old dashboard; they do not establish integration of the new forecast files. A separately created Python 3.12 virtual environment installed only `requirements-model.txt` and reproduced all three canonical CSVs byte for byte; metadata matched except its UTC creation timestamp. No source CSVs, cleaner, UI files, root requirements, or shared documentation were changed.
