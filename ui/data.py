@@ -14,16 +14,16 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data" / "processed"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 MODELS = {
-    "combined": "Combined · collisions + complaints",
-    "collision_only": "Collision history only",
-    "persistence": "Persistence · last week’s count",
+    "combined": "Combined",
+    "collision_only": "Collision history",
+    "persistence": "Previous week",
 }
 PREDICTION_COLUMNS = {model: f"{model}_prediction" for model in MODELS}
 MEASURES = {
-    "predicted": "Predicted collisions · following week",
-    "past_complaints": "Signal complaints · preceding week",
-    "past_collisions": "Collisions · preceding week",
-    "actual_collisions": "Observed collisions · target week",
+    "predicted": "Predicted collisions",
+    "past_complaints": "Signal complaints",
+    "past_collisions": "Past collisions",
+    "actual_collisions": "Observed collisions",
 }
 WEEKS = ("2025-09-01", "2025-09-08", "2025-09-15", "2025-09-22")
 BANDS = {"zero", "one", "two_plus"}
