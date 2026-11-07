@@ -70,3 +70,7 @@ Tests cover actual-export loading/startup, source hashes, safe CRLF normalizatio
 Demo: open Observed map; hover a blue and orange concentration; use the 1/5/10-event size legend; toggle each layer; switch to Individual events for timestamps and complaint status. Then show Model comparison and Prediction table as the separate model evidence. Report the actual comparison honestly rather than assuming complaints improve results.
 
 Only UI-owned files change. Model definitions, production source snapshots, and backend exports are maintained by the backend owner. PRs are reviewed and merged sequentially after team approval.
+
+## Optional complaint-change add-on
+
+The **Complaint change** tab reads a separate, real-data experiment from `experiments/complaint_change/results/`. It compares weekly change against collision-only and complaint-level models refitted on the same TWO available August training windows. The canonical three-window models and exports stay unchanged. The tab labels this reduced history and exploratory status, checks artifact/source hashes, and is disabled in synthetic main-fixture mode. Build and results are documented in `experiments/complaint_change/README.md`.

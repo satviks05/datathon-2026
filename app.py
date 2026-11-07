@@ -8,6 +8,7 @@ import streamlit as st
 from ui.data import (MODELS, PREDICTION_COLUMNS, WEEKS, ForecastDataError,
                      load_forecast_bundle, week_label, week_rows)
 from ui.observations import render_observations
+from ui.complaint_change import render_change_experiment
 
 st.set_page_config(page_title="NYC | Collision Forecasts", page_icon="🚦", layout="wide")
 st.markdown("""<style>
@@ -73,7 +74,7 @@ weekly_metrics = bundle.metrics.loc[
     bundle.metrics["scope"].eq("week") & bundle.metrics["forecast_start"].eq(forecast_week)
 ]
 can_download = not fixture and not bundle.stale_reasons
-observed, compare, table, method = st.tabs(["Observed map", "Model comparison", "Prediction table", "Data & method"])
+observed, compare, table, change, method = st.tabs(["Observed map", "Model comparison", "Prediction table", "Complaint change", "Data & method"])
 with observed:
     render_observations(forecast_week)
 
@@ -166,6 +167,9 @@ with table:
     st.download_button("Download displayed prediction rows", rows.to_csv(index=False).encode(),
                        f"predictions_{model}_{forecast_week}_{'top50' if top_only else 'all'}.csv",
                        "text/csv", disabled=not can_download, key="download_predictions")
+
+with change:
+    render_change_experiment(forecast_week, fixture=fixture)
 
 with method:
     st.subheader("What the experiment measures")
