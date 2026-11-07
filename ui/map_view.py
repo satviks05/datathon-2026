@@ -1,56 +1,69 @@
-"""Map rendering only; spatial membership belongs to the backend."""
+"""Map display encodings; marker sizes are pixels, not geographic radii."""
 
-import pandas as pd
+import numpy as np
 import pydeck as pdk
 
-
-def event_points(reports, crashes):
-    pieces = []
-    if not reports.empty:
-        frame = reports[["latitude", "longitude"]].copy()
-        frame["label"] = "Signal report · " + reports["unique_key"].astype(str)
-        frame["detail"] = reports["descriptor"].fillna("Unspecified component").astype(str)
-        frame["color"] = [[29, 118, 171, 145]] * len(frame)
-        pieces.append(frame)
-    if not crashes.empty:
-        frame = crashes[["latitude", "longitude"]].copy()
-        frame["label"] = "Harm crash · " + crashes["collision_id"].astype(str)
-        frame["detail"] = (crashes["number_of_persons_injured"].astype(str) + " injured · "
-                           + crashes["number_of_persons_killed"].astype(str) + " deaths")
-        frame["color"] = [[216, 100, 53, 160]] * len(frame)
-        pieces.append(frame)
-    return pd.concat(pieces, ignore_index=True) if pieces else pd.DataFrame()
+from ui.data import map_values
 
 
-def make_map(reports, crashes, targets, radius_m, selected_id):
-    layers = []
-    events = event_points(reports, crashes)
-    if not events.empty:
+def nyc_view():
+    return pdk.ViewState(latitude=40.715, longitude=-73.96, zoom=10.3,
+                         min_zoom=9, max_zoom=16, pitch=0)
+
+
+def map_frame(rows, model, measure, scale_max):
+    points = rows.copy()
+    points["display_count"] = map_values(rows, model, measure)
+    fraction = points["display_count"].to_numpy(dtype=float) / scale_max
+    fraction = np.clip(fraction, 0, 1)
+    points["marker_pixels"] = 3 + 14 * np.sqrt(fraction)
+    low, high = np.array([57, 139, 160]), np.array([226, 82, 45])
+    colors = low[None, :] + fraction[:, None] * (high - low)[None, :]
+    points["color"] = [[180, 190, 198, 135] if count == 0 else [*color.astype(int).tolist(), 195]
+                       for count, color in zip(points["display_count"], colors)]
+    points["display_label"] = points["display_count"].map(lambda count: f"{count:.2f}")
+    return points
+
+
+def make_map(rows, model, measure, scale_max, selected_id):
+    points = map_frame(rows, model, measure, scale_max)
+    layers = [pdk.Layer(
+        "ScatterplotLayer", points, id="forecast-cells", get_position="[longitude, latitude]",
+        get_fill_color="color", get_radius="marker_pixels", radius_units=pdk.types.String("pixels"),
+        radius_min_pixels=3, radius_max_pixels=17, pickable=True,
+    )]
+    selected = points.loc[points["area_id"].eq(selected_id)].copy()
+    if not selected.empty:
+        selected["outline_pixels"] = selected["marker_pixels"] + 3
         layers.append(pdk.Layer(
-            "ScatterplotLayer", events, id="source-events", get_position="[longitude, latitude]",
-            get_fill_color="color", get_radius=8, radius_min_pixels=2,
-            radius_max_pixels=5, pickable=True,
-        ))
-    if not targets.empty:
-        circles = targets.copy()
-        circles["label"] = "Review area · " + circles["target_id"].astype(str)
-        circles["detail"] = str(radius_m) + " m evidence radius · August ranking"
-        layers.append(pdk.Layer(
-            "ScatterplotLayer", circles, id="evidence-radius", get_position="[longitude, latitude]",
-            get_radius=radius_m, get_fill_color=[23, 107, 91, 20],
-            get_line_color=[23, 107, 91, 150], stroked=True, line_width_min_pixels=1,
-            pickable=True,
-        ))
-        circles["color"] = [
-            [18, 68, 59, 255] if tid == selected_id else [23, 135, 112, 235]
-            for tid in circles["target_id"]
-        ]
-        layers.append(pdk.Layer(
-            "ScatterplotLayer", circles, id="review-targets", get_position="[longitude, latitude]",
-            get_radius=24, radius_min_pixels=5, get_fill_color="color", pickable=True,
+            "ScatterplotLayer", selected, id="selected-cell", get_position="[longitude, latitude]",
+            get_radius="outline_pixels", radius_units=pdk.types.String("pixels"),
+            radius_max_pixels=20, filled=False, stroked=True,
+            get_line_color=[19, 50, 67, 255], line_width_min_pixels=2, pickable=False,
         ))
     return pdk.Deck(
         layers=layers, map_provider="carto", map_style="light",
-        initial_view_state=pdk.ViewState(latitude=40.722, longitude=-73.96, zoom=10.4, pitch=0),
-        tooltip={"text": "{label}\n{detail}"},
+        initial_view_state=nyc_view(),
+        tooltip={"text": "{area_id}\nDisplayed count: {display_label}\nForecast: {forecast_start} → {forecast_end} (end exclusive)"},
     )
+
+
+def make_source_map(reports, collisions):
+    """Display individual observed events without constructing model features."""
+    layers = []
+    for name, frame, id_column, color in (
+        ("Signal report", reports, "unique_key", [35, 132, 158, 165]),
+        ("Collision", collisions, "collision_id", [218, 99, 55, 175]),
+    ):
+        if frame.empty:
+            continue
+        frame = frame.copy()
+        frame["event_label"] = name + " · " + frame[id_column].astype(str)
+        layers.append(pdk.Layer(
+            "ScatterplotLayer", frame, id=name.replace(" ", "-"),
+            get_position="[longitude, latitude]", get_fill_color=color,
+            get_radius=4, radius_units=pdk.types.String("pixels"),
+            radius_min_pixels=3, radius_max_pixels=5, pickable=True,
+        ))
+    return pdk.Deck(layers=layers, map_provider="carto", map_style="light",
+                    initial_view_state=nyc_view(), tooltip={"text": "{event_label}"})
