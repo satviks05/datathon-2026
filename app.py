@@ -1,236 +1,252 @@
-"""Run from the repository root: streamlit run app.py."""
+"""Streamlit presentation for canonical weekly collision forecast exports."""
+
+import json
+from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
 
 from ui.data import (
-    STRATEGIES, TARGET_COLUMNS, EVALUATION_COLUMNS, area_evidence,
-    development_fixture, input_version, load_export, load_source_events,
-    select_configuration,
+    MODELS, MEASURES, PREDICTION_COLUMNS, WEEKS, ForecastDataError,
+    color_scale_max, load_forecast_bundle, source_events_for_week, week_label, week_rows,
 )
-from ui.map_view import make_map
+from ui.map_view import make_map, make_source_map
 
-
-st.set_page_config(page_title="Signal Review | NYC", page_icon="🚦", layout="wide")
+st.set_page_config(page_title="NYC | Collision Forecasts", page_icon="🚦", layout="wide")
 st.markdown("""<style>
-    .block-container {padding-top: 2rem; max-width: 1550px;}
-    h1 {letter-spacing: -0.045em; font-weight: 700;}
-    h2, h3 {letter-spacing: -0.025em;}
-    [data-testid="stMetric"] {background: white; border: 1px solid #e2e8ed;
-        border-radius: 12px; padding: 16px;}
-    .eyebrow {font-size: .75rem; letter-spacing: .16em; color: #176b5b; font-weight: 700;}
+.block-container {padding-top: 5rem; max-width: 1550px;}
+[data-testid="stMainBlockContainer"] {padding-top: 5rem;}
+h1 {letter-spacing: -.045em; font-weight: 700; line-height: 1.2;}
+h2, h3 {letter-spacing: -.025em;}
+[data-testid="stMetric"] {background: white; border: 1px solid #e2e8ed;
+    border-radius: 12px; padding: 16px;}
+.eyebrow {font-size: .75rem; letter-spacing: .15em; color: #176b5b; font-weight: 700;}
+.legend {max-width: 340px; height: 9px; border-radius: 5px;
+    background: linear-gradient(to right, #398ba0, #e2522d); margin: 6px 0;}
 </style>""", unsafe_allow_html=True)
-
-st.markdown('<div class="eyebrow">NYC IN MOTION / HISTORICAL SAFETY REVIEW</div>', unsafe_allow_html=True)
-st.title("A closer look at signal safety")
-st.markdown("Explore reported-signal areas alongside nearby injury and fatal crashes. "
-            "Use August evidence to compare review priorities against September outcomes.")
-st.caption("AUG–SEP 2025 · NYC local time · Review areas, not verified individual intersections")
+st.markdown('<div class="eyebrow">NYC IN MOTION / WEEKLY COLLISION FORECASTS</div>', unsafe_allow_html=True)
+st.title("Do complaints add predictive signal?")
+st.write("Compare collision history alone with collision history plus traffic-signal complaints. "
+         "Explore expected collision counts and what happened in the following week.")
+st.caption("Historical prototype · August training / September evaluation, 2025 · NYC local time")
 
 with st.sidebar:
-    st.markdown("### Review settings")
-    radius = st.slider("Evidence radius (meters)", 100, 250, 250, 25, key="radius_m",
-                       help="Changes neighborhood evidence, rankings, and evaluation together.")
-    strategy = st.selectbox("Ranking strategy", list(STRATEGIES),
-                            format_func=STRATEGIES.get, key="ranking_strategy")
-    budget = st.selectbox("Shortlist size (review areas)", [25, 50, 100], index=1, key="shortlist_budget",
-                         help="A scenario count, not an estimate of available crews.")
-    st.caption("Fixed grouping: 50 m grid\n\nFixed target spacing: 250 m")
+    st.markdown("### Explore a forecast")
+    forecast_week = st.selectbox("Forecast week", WEEKS, format_func=week_label, key="forecast_week", filter_mode=None)
+    model = st.selectbox("Prediction model", list(MODELS), format_func=MODELS.get, key="prediction_model", filter_mode=None)
+    measure = st.selectbox("Map measure", list(MEASURES), format_func=MEASURES.get, key="map_measure", filter_mode=None)
+    top_only = st.checkbox("Show model’s top 50 areas only", key="top_only",
+                           help="Sort by predicted count descending, then area ID. Does not change the backend’s evaluation.")
+    st.caption("Fixed 500 m cells · No radius search or inspection-spacing rule")
     st.divider()
-    st.markdown("### Map layers")
-    show_reports = st.checkbox("Signal reports", True, key="show_reports")
-    show_crashes = st.checkbox("Injury or fatal crashes", True, key="show_crashes")
-    map_period = st.radio("Source-event period", ["August", "September"], horizontal=True, key="map_period")
-    st.caption("The map period changes source-event layers only. Ranking inputs remain August.")
-    st.divider()
-    fixture = st.checkbox("Development: show sample shortlist", False, key="fixture_mode",
-                          help="Synthetic layout examples. Not analysis or recommendations.")
+    fixture = st.checkbox("Development: use example forecast", key="fixture_mode",
+                          help="Synthetic values for UI development only. Never use as findings.")
 
+bundle = None
+load_problem = None
 try:
-    reports, crashes = load_source_events()
-except (OSError, ValueError, KeyError) as exc:
-    st.error(f"Cannot load cleaned source data: {exc}")
-    st.code("python pipelines/clean_data.py data/raw data/processed")
+    bundle = load_forecast_bundle(fixture=fixture)
+except FileNotFoundError as exc:
+    load_problem = str(exc)
+except (ForecastDataError, OSError, ValueError, KeyError, TypeError) as exc:
+    load_problem = f"Forecast outputs rejected: {exc}"
+if bundle is None:
+    st.info("Explore the actual NYC records below. Model forecasts and comparisons will appear "
+            "when the forecast results are ready.")
+    st.subheader("NYC · observed signal reports and collisions")
+    feature_start = (date.fromisoformat(forecast_week) - timedelta(days=7)).isoformat()
+    st.caption(f"Observed records: {week_label(feature_start)} · preceding the selected forecast week. "
+               "This map shows individual recorded events, not predictions.")
+    layers = st.columns(2)
+    show_reports = layers[0].checkbox("Show signal reports", True, key="source_reports")
+    show_collisions = layers[1].checkbox("Show collisions", True, key="source_collisions")
+    try:
+        reports, crashes = source_events_for_week(forecast_week)
+        st.pydeck_chart(make_source_map(reports if show_reports else reports.iloc[:0],
+                                       crashes if show_collisions else crashes.iloc[:0]),
+                        width="stretch", height=520, key=f"source_map_{forecast_week}")
+        st.caption(f"Blue: {len(reports):,} signal reports · Orange: {len(crashes):,} collisions. "
+                   "No synthetic results or model estimates are included.")
+    except (OSError, ValueError, KeyError) as exc:
+        st.warning("The observed-data map could not load the cleaned files.")
+        st.caption(str(exc))
+    with st.expander("Forecast connection details"):
+        st.caption(load_problem)
+        st.caption("The backend owner supplies the canonical forecast build. After it is available:")
+        st.code("python -m src.build_forecast")
+        st.caption("The optional development example previews the forecast interface with labeled synthetic data.")
     st.stop()
 
-version = input_version()
-selected = pd.DataFrame(columns=sorted(TARGET_COLUMNS))
-evaluation = pd.DataFrame(columns=sorted(EVALUATION_COLUMNS))
-export_errors = []
-for filename, required in (("selected_targets.csv", TARGET_COLUMNS), ("evaluation.csv", EVALUATION_COLUMNS)):
-    try:
-        table, notice = load_export(filename, required)
-        if notice:
-            export_errors.append(notice)
-        if filename == "selected_targets.csv":
-            selected = select_configuration(table, radius, budget, strategy)
-        else:
-            evaluation = select_configuration(table, radius, budget)
-    except (OSError, ValueError, KeyError) as exc:
-        export_errors.append(str(exc))
-
 if fixture:
-    selected = development_fixture(radius, budget, strategy)
-    st.warning("DEVELOPMENT FIXTURE — locations, scores, and shortlist counts are synthetic layout "
-               "examples. They do not recalculate from source events and are not research findings. "
-               "Evaluation and recommendation downloads are disabled.")
-elif selected.empty:
-    st.info("Source data is ready. No backend shortlist is available for these settings yet. "
-            "The map shows real source events; ranking and evaluation are pending.")
-else:
-    st.caption("Loaded backend exports. The backend must regenerate all outputs after input or "
-               "method changes; this UI does not certify export provenance.")
+    st.warning("DEVELOPMENT EXAMPLE — all counts, predictions, metrics, and locations below are "
+               "synthetic layout fixtures. They are not model findings. Downloads are disabled.")
+elif bundle.stale_reasons:
+    st.warning("STALE SAVED RUN — these outputs do not match the available cleaned inputs. "
+               "They are shown only as saved historical results, not current predictions. "
+               "Downloads are disabled until the backend rebuilds or input provenance is restored.")
+    for reason in bundle.stale_reasons:
+        st.caption(reason)
 
-aug_reports = reports.loc[reports["created_date"].dt.month.eq(8)]
-sep_harm = crashes.loc[crashes["occurred_at"].dt.month.eq(9) & crashes["has_harm"]]
-metrics = st.columns(4)
-metrics[0].metric("August signal reports · mapped", f"{len(aug_reports):,}")
-metrics[1].metric("September harm crashes · mapped", f"{len(sep_harm):,}")
-metrics[2].metric("Sample areas" if fixture else "Selected review areas", str(len(selected)) if not selected.empty else "—")
-metrics[3].metric("Evidence radius", f"{radius} m")
-st.caption(f"{STRATEGIES[strategy]} · Requested shortlist: {budget} areas · "
-           "August inputs / September evaluation · Harm = injury OR fatality")
+meta = bundle.metadata
+run_id = meta["run_id"]
+rows = week_rows(bundle, forecast_week, model, top_only)
+all_week = week_rows(bundle, forecast_week, model)
+first = all_week.iloc[0]
+feature_label = week_label(first["feature_start"])
+forecast_label = week_label(forecast_week)
+context = f"{MODELS[model]} · Forecast {forecast_label} · Inputs {feature_label}"
+st.caption(context)
+st.caption(f"{'SYNTHETIC EXAMPLE' if fixture else 'Saved run' if bundle.stale_reasons else 'Verified input hashes'} "
+           f"· Run {run_id} · Generated {meta['created_at_utc']}")
 
-map_tab, compare_tab, quality_tab = st.tabs(["Explore areas", "Compare strategies", "Data & method"])
+weekly_metrics = bundle.metrics.loc[
+    bundle.metrics["scope"].eq("week") & bundle.metrics["forecast_start"].eq(forecast_week)
+]
+current_metric = weekly_metrics.loc[weekly_metrics["model"].eq(model)].iloc[0]
+summary = st.columns(4)
+summary[0].metric("Eligible 500 m cells", f"{len(all_week):,}")
+summary[1].metric("Weekly MAE · lower is better", f"{current_metric['mae']:.3f}")
+coverage = current_metric["top_k_coverage_pct"]
+summary[2].metric("Top-50 citywide collision coverage", "N/A" if pd.isna(coverage) else f"{coverage:.1f}%")
+summary[3].metric("Mapped citywide collisions · target week", f"{int(current_metric['citywide_collisions']):,}")
+st.caption("MAE and coverage are read from backend metrics, not recalculated here. "
+           "Top-50 coverage uses all mapped citywide collisions in the selected target week.")
 
-with map_tab:
-    left, right = st.columns([1.7, 1], gap="large")
-    chosen = None
-    with right:
-        st.subheader("Sample shortlist" if fixture else "Review shortlist")
-        if not selected.empty:
-            selected = selected.sort_values(["selected_rank", "target_id"])
-            ids = selected["target_id"].astype(str).tolist()
-            if st.session_state.get("selected_target") not in ids:
-                st.session_state["selected_target"] = ids[0]
-            chosen = st.selectbox("Inspect an area", ids, key="selected_target")
-            display = selected[["selected_rank", "target_id", "signal_report_count", "harm_crash_count", "score"]].rename(columns={
-                "selected_rank": "Rank", "target_id": "Area", "signal_report_count": "Aug reports",
-                "harm_crash_count": "Aug harm crashes", "score": "Priority score",
-            })
-            st.dataframe(display, hide_index=True, width="stretch",
-                         column_config={"Priority score": st.column_config.NumberColumn(format="%.3f")})
-            if not fixture:
-                st.download_button("Download shortlist CSV", selected.to_csv(index=False).encode(),
-                                   f"shortlist_{strategy}_{radius}m_k{budget}.csv", "text/csv")
-            st.caption("Scores order review priorities; they are not crash probabilities. "
-                       "Actual selection can be smaller than the requested shortlist.")
+explore, compare, method = st.tabs(["Forecast map", "Model comparison", "Data & method"])
+can_download = not fixture and not bundle.stale_reasons
+with explore:
+    map_column, table_column = st.columns([1.7, 1], gap="large")
+    with table_column:
+        st.subheader("Areas to explore")
+        st.caption(f"Showing {len(rows):,} of {len(all_week):,} eligible cells. "
+                   "Ordered by the selected model, with area-ID tie-breaking.")
+        ids = rows["area_id"].astype(str).tolist()
+        if st.session_state.get("selected_area") not in ids:
+            st.session_state["selected_area"] = ids[0]
+        selected_id = st.selectbox("Select an area", ids, key="selected_area", filter_mode=None)
+        visible_columns = ["area_id", "past_complaints", "past_collisions",
+                           PREDICTION_COLUMNS[model], "actual_collisions"]
+        st.dataframe(rows[visible_columns], hide_index=True, width="stretch", column_config={
+            "area_id": "Area", "past_complaints": "Prior-week complaints",
+            "past_collisions": "Prior-week collisions", "actual_collisions": "Observed next week",
+            PREDICTION_COLUMNS[model]: st.column_config.NumberColumn("Predicted next week", format="%.3f"),
+        })
+        st.download_button(
+            "Download displayed prediction rows", rows.to_csv(index=False).encode(),
+            f"predictions_{model}_{forecast_week}_{'top50' if top_only else 'all'}_{measure}.csv",
+            "text/csv", disabled=not can_download, key="download_predictions",
+        )
+        st.caption("Downloads preserve the canonical columns and all three predictions. "
+                   "The filename records the active model, week, map measure, and filter.")
+    with map_column:
+        st.subheader(MEASURES[measure])
+        if measure in {"past_complaints", "past_collisions"}:
+            st.caption(f"Observed inputs: {feature_label}. These precede the prediction period.")
+        elif measure == "actual_collisions":
+            st.caption(f"Retrospective outcome: {forecast_label}. Not a forecast or model input.")
         else:
-            st.caption("The backend's selected_targets.csv will populate this table. "
-                       "You can preview the layout using the development checkbox.")
-    with left:
-        st.subheader("Reported-signal areas")
-        month = 8 if map_period == "August" else 9
-        map_reports = reports.loc[reports["created_date"].dt.month.eq(month)]
-        map_crashes = crashes.loc[crashes["occurred_at"].dt.month.eq(month) & crashes["has_harm"]]
-        st.pydeck_chart(make_map(
-            map_reports if show_reports else map_reports.iloc[:0],
-            map_crashes if show_crashes else map_crashes.iloc[:0], selected, radius, chosen,
-        ), width="stretch", height=490)
-        st.caption(f"● Green: {'sample' if fixture else 'selected'} review areas / evidence circles · "
-                   f"● Blue: {map_period} signal reports · ● Orange: {map_period} injury/fatal crashes. "
-                   "Source layers show the full month, not only matched events. Basemap: CARTO / OpenStreetMap.")
+            st.caption(f"Expected collisions: {forecast_label}. Fractional values represent expected counts.")
+        scale = color_scale_max(bundle, measure)
+        st.pydeck_chart(make_map(rows, model, measure, scale, selected_id), width="stretch", height=480,
+                        key=f"forecast_map_{forecast_week}_{model}_{measure}_{top_only}")
+        st.markdown('<div class="legend"></div>', unsafe_allow_html=True)
+        st.caption(f"Count scale: 0 → {scale:.2f}. Gray = zero. Larger/brighter markers = higher count. "
+                   "Scale fixed across models and weeks for this measure.")
+        st.caption("One marker per eligible 500 m cell at its exported center. Marker size is a visual "
+                   "encoding in pixels, not a geographic radius. CARTO / OpenStreetMap basemap.")
 
     st.divider()
-    st.subheader("Area evidence")
-    if chosen is None:
-        st.caption("Select a review area once backend results are available.")
-    else:
-        row = selected.loc[selected["target_id"].eq(chosen)].iloc[0]
-        st.markdown(f"**{chosen}** · {row['latitude']:.5f}, {row['longitude']:.5f} · {radius} m")
-        cols = st.columns(3)
-        cols[0].metric("Sample reports" if fixture else "August signal reports", int(row["signal_report_count"]))
-        cols[1].metric("Sample harm crashes" if fixture else "August harm crashes", int(row["harm_crash_count"]))
-        cols[2].metric("Reported component", str(row["top_descriptor"]))
-        st.write(row["suggested_inspection"])
-        st.caption("Reported component labels are not verified diagnoses. Historical reports do not "
-                   "establish a current defect or show that signals caused nearby crashes.")
-        evidence_period = st.radio("Evidence period", ["august", "september"], horizontal=True, key="evidence_period",
-                                   format_func=lambda x: "August · ranking evidence" if x == "august" else "September · evaluation evidence")
-        if fixture:
-            st.info("Sample areas have no linked source evidence. Disable the fixture to inspect real backend results.")
-        else:
-            try:
-                records = area_evidence(chosen, radius, evidence_period, version)
-                if records is None:
-                    st.info("Event details await src.api.get_area_evidence(). No nearby records are inferred by the UI.")
-                else:
-                    outcomes = records["collisions"]
-                    context_columns = {
-                        "number_of_persons_injured": "Injured people · nearby records",
-                        "number_of_persons_killed": "Deaths · nearby records",
-                        "number_of_cyclist_injured": "Cyclist injuries · nearby records",
-                    }
-                    if not outcomes.empty and set(context_columns).issubset(outcomes.columns):
-                        context = st.columns(3)
-                        for column, (field, label) in zip(context, context_columns.items()):
-                            column.metric(label, int(pd.to_numeric(outcomes[field], errors="raise").sum()))
-                        st.caption(f"{evidence_period.title()} context totals from backend-returned records. "
-                                   "Cyclist injuries are part of total injuries, not an additional category.")
-                    a, b = st.columns(2)
-                    with a:
-                        st.markdown("**Signal reports · original records**")
-                        st.dataframe(records["reports"], hide_index=True, width="stretch")
-                    with b:
-                        st.markdown("**Collisions · original records and outcome flags**")
-                        st.dataframe(records["collisions"], hide_index=True, width="stretch")
-            except Exception as exc:
-                st.error(f"Backend evidence could not be loaded: {exc}")
+    st.subheader("Selected area · inputs, predictions, and outcome")
+    area = rows.loc[rows["area_id"].eq(selected_id)].iloc[0]
+    st.markdown(f"**{selected_id}** · {area['latitude']:.5f}, {area['longitude']:.5f} "
+                f"· Early-history activity band: `{area['activity_band']}`")
+    st.caption(f"Inputs {feature_label} → forecast {forecast_label}. Exported end dates are exclusive.")
+    inputs = st.columns(3)
+    inputs[0].metric("Prior-week signal complaints", int(area["past_complaints"]))
+    inputs[1].metric("Prior-week collisions", int(area["past_collisions"]))
+    inputs[2].metric("Observed target-week collisions", int(area["actual_collisions"]))
+    predictions = st.columns(3)
+    for column, model_id in zip(predictions, MODELS):
+        column.metric(MODELS[model_id], f"{area[PREDICTION_COLUMNS[model_id]]:.3f}")
+    st.caption("All models predict ALL mapped collisions, not only injury/fatal crashes. "
+               "These expected counts are not per-traveler risk or probabilities.")
 
-with compare_tab:
-    st.subheader("Three strategies. One comparison setting.")
-    st.caption(f"Radius {radius} m · Requested shortlist {budget} · August selection / September outcomes")
-    if fixture:
-        st.info("Evaluation is disabled for development fixtures.")
-    elif evaluation.empty:
-        st.info("Awaiting backend evaluation.csv for this radius and shortlist size.")
-    else:
-        labels = evaluation.copy()
-        labels["Strategy"] = labels["strategy"].map(STRATEGIES)
-        st.bar_chart(labels.set_index("Strategy")[["september_harm_coverage_pct"]].rename(
-            columns={"september_harm_coverage_pct": "September harmful crashes covered (%)"}),
-            color="#176B5B", horizontal=True)
-        st.dataframe(labels[["Strategy", "selected_count", "september_harm_crashes_covered",
-                              "september_harm_coverage_pct", "august_signal_reports_covered"]],
-                     hide_index=True, width="stretch")
-        missing = set(STRATEGIES) - set(evaluation["strategy"])
-        if missing:
-            st.warning("Comparison is incomplete; missing: " + ", ".join(STRATEGIES[s] for s in sorted(missing)))
-        st.download_button("Download comparison CSV", evaluation.to_csv(index=False).encode(),
-                           f"comparison_{radius}m_k{budget}.csv", "text/csv")
-    st.markdown(f"Coverage denominator: **{len(sep_harm):,} mapped September injury/fatal crashes**. "
-                "The backend must count each crash once across overlapping selected circles.")
-    st.caption("Compare strategies at the same radius and shortlist size. Larger circles mechanically "
-               "cover more events. September evaluation is exploratory, not an untouched test set. "
-               "August report coverage is an in-sample burden measure.")
+with compare:
+    st.subheader("Does adding complaints improve the forecast?")
+    comparison_scope = st.radio("Comparison period", ["Selected week", "All four weeks"],
+                                horizontal=True, key="comparison_scope")
+    comparison = (weekly_metrics.copy() if comparison_scope == "Selected week"
+                  else bundle.metrics.loc[bundle.metrics["scope"].eq("overall")].copy())
+    st.caption(f"{forecast_label if comparison_scope == 'Selected week' else 'September 1–28, 2025 · pooled evaluation'} "
+               "· Same eligible rows for all models · Authoritative backend metrics")
+    comparison["Model"] = comparison["model"].map(MODELS)
+    comparison = comparison.set_index("model").reindex(list(MODELS)).reset_index()
+    charts = st.columns(2)
+    with charts[0]:
+        st.markdown("**Mean absolute error · lower is better**")
+        st.bar_chart(comparison.set_index("Model")[["mae"]].rename(columns={"mae": "MAE (collisions per cell-week)"}),
+                     horizontal=True, color="#176B5B")
+    with charts[1]:
+        st.markdown("**Top-50 collision coverage · higher is better**")
+        st.bar_chart(comparison.set_index("Model")[["top_k_coverage_pct"]].rename(
+            columns={"top_k_coverage_pct": "Citywide mapped collisions covered (%)"}),
+            horizontal=True, color="#398BA0")
+    st.dataframe(comparison[["Model", "mae", "top_k", "top_k_collisions", "citywide_collisions",
+                             "eligible_collisions", "top_k_coverage_pct", "eligible_coverage_pct"]],
+                 hide_index=True, width="stretch", column_config={
+                     "mae": st.column_config.NumberColumn("MAE", format="%.3f"),
+                     "top_k_coverage_pct": st.column_config.NumberColumn("Top-50 coverage (%)", format="%.2f"),
+                     "eligible_coverage_pct": st.column_config.NumberColumn("Eligible-universe coverage (%)", format="%.2f"),
+                 })
+    st.caption("Top-50 coverage counts collisions in the model’s 50 highest-predicted cells, divided "
+               "by all mapped citywide collisions. Eligible-universe coverage shows the ceiling "
+               "available within the study cells. Pooled coverage uses pooled counts, not an average of weekly percentages.")
+    st.subheader("Does performance differ in historically busy areas?")
+    bands = bundle.metrics.loc[bundle.metrics["scope"].eq("activity_band")].copy()
+    bands["Model"] = bands["model"].map(MODELS)
+    st.dataframe(bands[["Model", "activity_band", "area_week_rows", "mae"]],
+                 hide_index=True, width="stretch", column_config={
+                     "mae": st.column_config.NumberColumn("Pooled MAE", format="%.3f"),
+                 })
+    st.caption("Bands use August 1–7 collision counts: zero, one, or two_plus. "
+               "They are fixed before evaluation and are not population or traffic-exposure estimates.")
+    st.download_button("Download authoritative metrics", bundle.metrics.to_csv(index=False).encode(),
+                       f"metrics_{run_id}.csv", "text/csv", disabled=not can_download, key="download_metrics")
+    st.caption("Download includes all weeks, pooled results, and activity bands. "
+               "Report worse results honestly; no model is assumed to win.")
 
-with quality_tab:
-    st.subheader("What these records can tell us")
-    st.dataframe(pd.DataFrame([
-        ["DOT 311 reports", 34676, "6,534 traffic signal reports; 6,119 mapped; 415 excluded (6.35%)"],
-        ["Police-reported crashes", 14526, "14,066 mapped; 119 missing coordinates; 341 zero-coordinate pairs"],
-    ], columns=["Source", "Original rows", "Included scope and coordinate exclusions"]),
-        hide_index=True, width="stretch")
-    st.caption("Source audit counts apply to the original supplied bundle. Current loaded snapshots: "
-               f"{len(reports):,} reports / {len(crashes):,} collisions. Re-audit if inputs change.")
+with method:
+    st.subheader("What the experiment measures")
     st.markdown("""
-**Method.** August reports define candidates on a 50 m grid. The backend ranks report and harmful-crash
-counts by percentile; combined gives each percentile equal weight. Shortlists use fixed 250 m spacing.
-The radius controls evidence neighborhoods, not the grouping grid or spacing.
+**Question.** Do traffic-signal complaint counts add predictive information beyond collision history?
 
-**Limits.** Broad coordinate screening is not intersection verification. Reports are not verified
-defects; request closure does not prove repair. Nearby crashes do not establish signal causation.
-There is no traffic-exposure denominator, complete signal inventory, or evidence of injuries prevented.
-The shortlist size is a review scenario, not a claim about staffing capacity.
+**Geography.** Fixed 500 m cells in EPSG:32618, eligible only if they had a mapped complaint or
+collision on August 1–7. Every eligible cell is retained every week, including zero-event cells.
+Other NYC locations are outside the prediction universe, not necessarily safe.
 
-**Sources.** [NYC 311](https://data.cityofnewyork.us/d/erm2-nwe9) ·
-[NYPD Motor Vehicle Collisions](https://data.cityofnewyork.us/d/h9gi-nx95).
-The two challenge CSVs are the only analytical inputs.
+**Forecasting.** The previous seven days of counts predict the next seven days. Training targets are
+August 8–14, 15–21, and 22–28. Evaluation targets are September 1–7, 8–14, 15–21, and 22–28.
+Preprocessing and fitted models stay frozen. Earlier September observations can inform later
+September forecasts; this is not a frozen August-only forecast of the entire month.
+
+**Models.** Persistence predicts the last week’s collision count. Collision-only and combined use
+log1p count features → StandardScaler → PoissonRegressor, alpha 1.0, max_iter 1000. Only the combined
+model adds complaint counts. The backend owns fitting and all evaluation calculations.
+
+**Limits.** September evaluation is exploratory and covers only four weeks. Traffic exposure,
+population activity, and road characteristics are not controlled. Predictive improvement would not
+establish that signal defects caused crashes, that a staffing shortage exists, or that repairs would
+prevent a quantified number of injuries. Complaints are reports, not verified defects.
 """)
-    with st.expander("Backend connection status", expanded=bool(export_errors)):
-        for message in export_errors:
-            st.write(message)
-        st.caption("Expected exports: data/processed/selected_targets.csv and evaluation.csv. "
-                   "Expected evidence helper: src.api.get_area_evidence(target_id, radius_m, period).")
-        st.caption("Input/export file signatures and backend Python changes invalidate UI caches. "
-                   "Restart Streamlit after changing backend implementation code.")
+    st.markdown("[NYC 311 source](https://data.cityofnewyork.us/d/erm2-nwe9) · "
+                "[NYPD collision source](https://data.cityofnewyork.us/d/h9gi-nx95)")
+    st.caption("Original bundle audit: 6,534 signal complaints → 6,119 mapped (415 excluded); "
+               "14,526 collisions → 14,066 mapped (119 missing coordinates and 341 zero-coordinate pairs). "
+               "The active run’s source audit below takes precedence for changed inputs.")
+    with st.expander("Active run provenance and source audit"):
+        st.json(meta)
+        st.caption("Canonical outputs only: predictions.csv, metrics.csv, run_metadata.json. "
+                   "Old ranking exports are never a fallback. UI caches include file signatures and run ID.")
+    st.download_button("Download run metadata", json.dumps(meta, indent=2).encode(),
+                       f"run_metadata_{run_id}.json", "application/json", disabled=not can_download,
+                       key="download_metadata")

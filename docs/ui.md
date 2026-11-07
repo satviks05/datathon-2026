@@ -1,75 +1,118 @@
-# Streamlit UI
+# Weekly collision-forecast UI
 
-## Run from the repository root
+This replaces the earlier inspection-area/radius workflow. `docs/PROJECT_HANDOFF.md` is the authoritative specification. UI code does not train models, aggregate geographic features, or calculate MAE or coverage.
 
-Use Python 3.10 or newer:
+## Get and run this version
 
-```bash
-python -m venv .venv
-# macOS/Linux:
-source .venv/bin/activate
-# Windows PowerShell instead:
-# .venv\Scripts\Activate.ps1
-python -m pip install -r ui/requirements.txt
-python -m streamlit run app.py
+Python **3.12, 64-bit** is recommended. From the repository root, Windows PowerShell:
+
+```powershell
+git fetch origin
+git switch feature/forecast-ui
+git pull origin feature/forecast-ui
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r ui/requirements.txt
+.\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-The separate UI dependency file avoids editing the backend owner's dependencies. The backend owner can later incorporate it into a root requirements file. The existing cleaner is unchanged.
+Activation is unnecessary when invoking the virtual environment's Python directly. On macOS/Linux, use `python3.12 -m venv .venv`, then `.venv/bin/python` in place of the Windows executable. Stop Streamlit with Ctrl+C.
 
-## Current behavior
+After the backend owner's revised implementation is available, its separate setup/build commands are:
 
-- Real August/September source layers from the committed cleaned CSVs, with explicit injury OR fatality filtering and source-event month controls.
-- Radius 100–250 m in 25 m increments; crash-first strategy by default; shortlist sizes 25/50/100, default 50.
-- Shortlist, target selection, evidence circles, downloads, comparison chart, quality notes, and missing/error states.
-- No scoring, candidate generation, spacing, neighborhood matching, or evaluation calculations in UI code.
-- When backend exports are missing, the app shows real source events and marks analysis as pending. The development checkbox enables three explicitly synthetic layout examples; evaluation and downloads are disabled in this mode.
-- Target selection uses a dropdown. Map hover exposes event IDs and details; map-click selection is not implemented.
-- Source layers show all mapped events for the chosen month, independently of target neighborhoods. August target evidence and September evaluation remain clearly separated.
-
-## Backend integration
-
-The interface follows the latest team build plan. Existing `docs/DATA_CONTRACTS.md` describes the earlier starter and needs updating by its owner; the actual UI export expectations are below.
-
-`data/processed/selected_targets.csv` requires:
-
-```text
-target_id,latitude,longitude,radius_m,strategy,signal_report_count,harm_crash_count,
-score,top_descriptor,suggested_inspection,selected_rank,budget
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-model.txt
+.\.venv\Scripts\python.exe -m src.build_forecast
 ```
 
-`data/processed/evaluation.csv` requires:
+These depend on the new backend PR; the older `src.build`/`src.train` modules and legacy exports are not substitutes.
 
-```text
-strategy,radius_m,budget,selected_count,september_harm_crashes_covered,
-september_harm_coverage_pct,august_signal_reports_covered
+## State and demo readiness
+
+The UI can be developed and checked before real model exports exist. In that case, startup shows an NYC-centered map of the real cleaned signal reports and collisions from the preceding week. Layer checkboxes and forecast-week selection update these observed records. This is an explicitly labeled observation view; it does not invent predictions or metrics. Missing-file diagnostics and backend setup commands are tucked into **Forecast connection details**. Enable **Development: use example forecast** to inspect a tiny static fixture. All fixture values and locations are synthetic; warnings remain visible and downloads are disabled. Fixture JSON is explicitly marked and cannot be loaded as a production run.
+
+No real-model results are claimed by this UI PR. A real-data end-to-end demo requires the revised backend exports and an integration check. No PR merges are performed automatically; reviewed backend and UI changes need team approval.
+
+## Controls and behavior
+
+- **Forecast week:** September 1–7, 8–14, 15–21, or 22–28, 2025.
+- **Prediction model:** combined Poisson, collision-only Poisson, or persistence.
+- **Map measure:** prior-week signal complaints, prior-week collisions, predicted collisions, or observed target-week collisions.
+- **Top-50 filter:** presentation sorting uses predicted count descending and lexicographic area-ID tie-breaking. It does not recompute coverage or change the backend's top-50 rule.
+- **Area selection:** dropdown; if filtering hides the selected area, reset to the top displayed cell. Map-click selection is not implemented.
+- **Comparison period:** selected week or pooled four-week evaluation. Activity-band MAE is always labeled as pooled.
+
+All dropdowns are selection-only with typing disabled using Streamlit's native `filter_mode=None`. This requires **Streamlit 1.67 or newer**, as specified in `ui/requirements.txt`; reinstall UI requirements when updating this branch. Header spacing clears Streamlit's fixed toolbar.
+
+The selected-area panel shows both historical counts, all three model predictions, and the later observed outcome. Zero-event cells remain visible. All models predict ALL collisions, rather than injury-only outcomes.
+
+Map color and marker size encode counts. Radius is in screen pixels, never a geographic neighborhood. Pydeck receives a literal `pixels` unit (not an accessor expression), forecast circles are capped at 17 px, and the selected outline at 20 px. The camera starts over NYC at zoom 10.3 with zoom limits 9–16. The predicted-count scale is fixed across all three models and all four weeks; other count measures each use a fixed scale across weeks. Gray marks zero. Legends specify units and periods. CARTO tiles require internet access; map hover shows cell ID and displayed count.
+
+## Canonical backend contract
+
+Only these production files are read, from `data/processed/`:
+
+- `predictions.csv`
+- `metrics.csv`
+- `run_metadata.json`
+
+The exact required fields are in the handoff and in `ui/data.py`. Predictions contain every eligible cell in every evaluation week and preserve zero rows. The UI verifies fixed cell IDs/centers/activity bands, adjacent seven-day input/target windows, nonnegative finite predictions, integer counts, all three models' metrics, pooled and activity-band rows, and supported metadata schema/grid/universe settings.
+
+`combined` means the trained combined Poisson model. No old percentile score, ordinary linear regression, radius-based selection, `selected_targets.csv`, `evaluation.csv`, or `src.api.get_area_evidence()` is used.
+
+Percentages in metrics are **0–100**, not fractions. Coverage is blank if its denominator is zero. Activity-band coverage fields are blank, not zero. Metrics must provide week and overall rows for all models and activity-band rows for all populated bands. Counts in metric rows must match the exported eligible universe.
+
+### Metadata hash representation
+
+The handoff specifies hashes but not their key representation. This UI accepts cleaned filenames or relative/absolute paths as keys; only their basename is matched. Digest values can be strings or objects with a `sha256` field. Example preferred representation:
+
+```json
+{
+  "input_sha256": {
+    "signal_complaints_clean.csv": "<64 hex characters>",
+    "collisions_clean.csv": "<64 hex characters>"
+  }
+}
 ```
 
-Percentages are 0–100, not fractions. Strategies are `crash_first`, `complaint_first`, and `combined`. Required numeric values must be populated. Each selected target is unique within radius/strategy/budget; each evaluation configuration is unique. Export all seven radii and three budgets. Missing configurations are displayed as unavailable; the UI does not fall back to another radius or invent numbers.
+Every prediction/metric row must match metadata `run_id`; schema version must be integer `1`. Metadata also includes the handoff's timestamps, windows, model settings, source audit, limitations, EPSG:32618 / 500 m settings, eligible area count, and August 1–7 eligibility bounds. Extra fields are allowed.
 
-The app does not need `targets_scored.csv` to show the selected shortlist. It remains a backend-owned audit output.
+The UI checks file modification times/sizes plus run ID for cache invalidation. Cleaned-source SHA-256 hashes are compared to metadata. Changed or unverifiable sources produce a **STALE SAVED RUN** warning; saved outputs can be inspected but are not labeled current and downloads are disabled. Mixed runs, malformed schemas, invalid values, or missing cell/week/model rows are rejected. Old output files never act as fallback data. No backend files are changed by the UI.
 
-Evidence helper:
+The backend owns export generation. Write a complete run before launching/reloading; the reader rejects inconsistent run IDs and detects file changes during reading. `features.csv` is an audit artifact and is not required for UI startup.
 
-```python
-# Backend owner implements src/api.py:
-def get_area_evidence(target_id, radius_m, period="august"):
-    return {"reports": reports_dataframe, "collisions": collisions_dataframe}
+## Tests
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests/ui -v
 ```
 
-Return original event IDs and source columns. Nonempty reports must include `unique_key` and `created_date`; nonempty collisions must include `collision_id` and `crash_date`. Keep the requested period only. Include `distance_m` and injury/fatality flags for useful evidence display; label whether collisions include all outcomes or harmful outcomes only. Empty DataFrames are accepted. The helper receives no ranking strategy because spatial membership is independent of ranking.
+The suite covers:
 
-Changing radius, strategy, or budget selects matching backend exports and refreshes the map, shortlist, metrics, evidence, and comparison. If the selected target no longer appears, selection resets to the top target. Comparisons include all available strategies at the same radius/budget.
+- Startup and control changes using production-shaped synthetic exports.
+- Area selection, top-50 tie-breaking, selection reset, displayed/downloaded week agreement.
+- Fixed model-comparison map scales and retained zero-event rows.
+- Explicit fixture labeling and disabled fixture downloads.
+- Read-only dropdown settings, literal map-pixel serialization, NYC camera bounds, and an actual-source map when model files are absent.
+- Missing/malformed/mixed-run/stale states, unsupported schema versions, and input-hash checks.
+- Cache invalidation when run IDs/files change.
+- An additional real-output startup/hash check that runs once all canonical production exports exist; otherwise explicitly skipped.
 
-File modification time/size signatures for cleaned data, generated exports, and backend Python files invalidate UI caches. Evidence keys also include target/radius/period. Backend owners must regenerate exports after data/method changes: file caching cannot establish the analytical provenance of externally generated CSVs. Restart Streamlit after changing backend Python code so imported modules refresh.
+Tests do not fit models or verify numerical claims about the real dataset. Streamlit AppTest validates Python rendering and interactions, not browser tile rendering. The managed session's supported browser-preview tool is unavailable, so a visual browser check remains part of the local demo.
 
-Generated analysis CSVs are ignored by the current repository `.gitignore`. The backend owner must document a generation command or explicitly choose to track small final exports. UI code does not modify that policy.
+## Integration checklist for the backend owner / team
 
-## Validation
+1. Publish schema-compliant real exports with matching run IDs and hashes of the committed cleaned inputs.
+2. Keep the four exact target windows, all eligible cells, and all required metric scopes.
+3. Resolve generated-output tracking through the shared-file owner; the current `.gitignore` may ignore these new files. The UI does not edit that policy.
+4. Merge reviewed PRs one at a time after team approval. Pull updated `main`, build exports, then run the UI suite.
+5. Start Streamlit and verify no fixture/stale/error banner appears; switch each week/model/measure, inspect zero and high-count cells, toggle top-50, and download the visible rows.
+6. Compare displayed weekly/pooled values to `metrics.csv` and verify the same run ID appears in metadata and downloads.
 
-```bash
-python -m unittest discover -s tests/ui -v
-```
+## Short demo walkthrough
 
-Tests use Streamlit AppTest and temporary in-memory export fixtures. They verify real-source startup, development warnings/download restrictions, control changes, strict configuration selection, fatal-only crash inclusion, and the real-export/evidence connection. They do not require the ranking backend to exist.
-
-The basemap needs network access to CARTO tiles. AppTest checks Python rendering and widget behavior, not browser map-tile rendering.
+1. Open the forecast map on combined / September 1–7 / predicted collisions.
+2. Switch to collision-only, explaining the fixed visual scale and all-collision expected-count units.
+3. Show preceding-week complaints and retrospective observed collisions, noting their different periods.
+4. Select an area and compare its historical counts, three predictions, and observed outcome.
+5. Open Model comparison: show MAE and top-50 coverage for the selected week, then pooled results and activity-band errors. Read the actual tradeoff honestly.
+6. Show the eligible-universe coverage ceiling and limitations, then download real prediction rows/metrics.
