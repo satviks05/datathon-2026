@@ -1,5 +1,7 @@
 # NYC in Motion: Signal Complaints & Collisions
 
+**[View the project slideshow](https://docs.google.com/presentation/d/1WO6Rd_ebGysJ5bdaHNZ1DslUF2pKioHuWd-DgpDMDjE/edit?usp=sharing)**
+
 **Do traffic-signal complaints improve predictions of subsequent collision counts beyond recent collision history alone?**
 
 A Rutgers Data Science Club Datathon 2026 project using NYC 311 signal reports and NYPD collision records from **August–September 2025**. The Streamlit dashboard combines an observed-event concentration map with reproducible forecasting comparisons and an exploratory week-over-week complaint-change experiment.
